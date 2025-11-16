@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>STREAMFLIX - Streaming de Films et Séries</title>
+  
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Plus+Jakarta+Sans:wght@600;700&family=Manrope:wght@600;700&display=swap" rel="stylesheet">
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ========================================
+       HEADER & NAVIGATION
+       ======================================== -->
+  <header class="header">
+    <nav class="nav">
+      <div class="brand">STREAMFLIX</div>
+      
+      <div class="navlinks">
+        <a href="#accueil">Accueil</a>
+        <a href="#series">Séries</a>
+        <a href="#films">Films</a>
+      </div>
+      
+      <div class="spacer"></div>
+      
+      <form class="search-bar" onsubmit="return false;">
+        <input id="searchInput" type="text" placeholder="Rechercher..." aria-label="Rechercher un film ou une série">
+        <button type="submit" class="search-btn" aria-label="Rechercher">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <path d="m21 21-4.35-4.35"></path>
+          </svg>
+        </button>
+      </form>
+    </nav>
+  </header>
+
+  <!-- ========================================
+       HERO SECTION - Carousel de films
+       ======================================== -->
+  <div id="heroBackground" class="hero-bg"></div>
+  
+  <section class="hero" id="accueil">
+    <div class="hero-content" id="heroBox">
+      <span class="eyebrow" id="genre">GENRE</span>
+      
+      <div class="meta">
+        <span class="badge" id="rating">⭐ 0/10</span>
+        <span class="badge" id="runtime">⏱ —</span>
+        <span class="badge" id="year">📅 —</span>
+      </div>
+      
+      <h1 class="title" id="title">Titre</h1>
+      <p class="desc" id="desc">Description…</p>
+      
+      <button class="cta" aria-label="Regarder maintenant">REGARDER MAINTENANT</button>
+    </div>
+  </section>
+
+  <!-- ========================================
+       CONTENT SECTIONS - Films et Séries
+       ======================================== -->
+  <main class="content">
+    
+    <!-- Films Populaires -->
+    <section class="movies-section" id="films">
+      <h2>🎬 Films Populaires</h2>
+      
+      <button class="scroll-btn left" aria-label="Précédent" data-target="popularMovies">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      
+      <button class="scroll-btn right" aria-label="Suivant" data-target="popularMovies">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      
+      <div class="row" id="popularMovies" role="list" aria-label="Liste des films populaires"></div>
+    </section>
+
+    <!-- Séries Populaires -->
+    <section class="movies-section" id="series">
+      <h2>📺 Séries Populaires</h2>
+      
+      <button class="scroll-btn left" aria-label="Précédent" data-target="popularSeries">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      
+      <button class="scroll-btn right" aria-label="Suivant" data-target="popularSeries">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      
+      <div class="row" id="popularSeries" role="list" aria-label="Liste des séries populaires"></div>
+    </section>
+
+    <!-- Films d'Horreur -->
+    <section class="movies-section">
+      <h2>😱 Frissons</h2>
+      
+      <button class="scroll-btn left" aria-label="Précédent" data-target="horrorMovies">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      
+      <button class="scroll-btn right" aria-label="Suivant" data-target="horrorMovies">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      
+      <div class="row" id="horrorMovies" role="list" aria-label="Liste des films d'horreur"></div>
+    </section>
+    
+    <!-- Romance -->
+    <section class="movies-section">
+      <h2>💕 Romance</h2>
+      
+      <button class="scroll-btn left" aria-label="Précédent" data-target="romanceMovies">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      
+      <button class="scroll-btn right" aria-label="Suivant" data-target="romanceMovies">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      
+      <div class="row" id="romanceMovies" role="list" aria-label="Liste des films romantiques"></div>
+    </section>
+    
+  </main>
+  <!-- ========================================
+       SCRIPTS
+       ======================================== -->
+  <script src="script.js"></script>
+</body>
+</html>
