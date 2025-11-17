@@ -41,11 +41,24 @@ async function ensureGenreMaps(){
    ======================================== */
 // Fonction pour générer les étoiles
 function generateStars(rating, maxStars = 5){
-  const fullStars = Math.floor(rating / 2);
+  // Convertir la note de 0-10 à 0-5 étoiles
+  // S'assurer que rating est entre 0 et 10 et est un nombre
+  const numRating = parseFloat(rating) || 0;
+  const normalizedRating = Math.max(0, Math.min(10, numRating));
+  // Convertir en nombre d'étoiles (0-5)
+  // Exemples:
+  // - 6.6/10 = 0.66 * 5 = 3.3 → 3 étoiles pleines
+  // - 8.0/10 = 0.8 * 5 = 4.0 → 4 étoiles pleines
+  // - 10.0/10 = 1.0 * 5 = 5.0 → 5 étoiles pleines
+  const starRating = (normalizedRating / 10) * maxStars;
+  const fullStars = Math.floor(starRating);
+  
   const starsHTML = Array(maxStars).fill(0).map((_, i) => {
+    // Si l'index est inférieur au nombre d'étoiles pleines, afficher une étoile pleine
     if(i < fullStars){
       return `<svg width="20" height="20" viewBox="0 0 24 24" fill="#ffd700" stroke="#ffd700" stroke-width="1"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
     } else {
+      // Sinon, afficher une étoile vide
       return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffd700" stroke-width="1"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
     }
   }).join("");
@@ -177,10 +190,13 @@ async function loadDetails(){
   try {
     await ensureGenreMaps();
     
-    // Charger les détails
-    const [details, credits] = await Promise.all([
+    // Charger les détails, crédits et vidéos
+    // Charger les vidéos sans filtre de langue pour avoir plus de résultats
+    const [details, credits, videos, videosAll] = await Promise.all([
       tmdb(`/${type}/${itemId}?language=fr-FR`),
-      tmdb(`/${type}/${itemId}/credits?language=fr-FR`)
+      tmdb(`/${type}/${itemId}/credits?language=fr-FR`),
+      tmdb(`/${type}/${itemId}/videos?language=fr-FR`),
+      tmdb(`/${type}/${itemId}/videos`) // Sans langue pour avoir toutes les vidéos
     ]);
     
     const isMovie = type === "movie";
@@ -207,7 +223,8 @@ async function loadDetails(){
     const detailPoster = document.getElementById("detailPoster");
     if(detailPoster){
       if(posterPath){
-        detailPoster.src = `https://image.tmdb.org/t/p/w500${posterPath}`;
+        // Utiliser w780 pour une meilleure qualité du poster
+        detailPoster.src = `https://image.tmdb.org/t/p/w780${posterPath}`;
         detailPoster.alt = title;
         detailPoster.style.display = "block";
       } else {
@@ -285,17 +302,114 @@ async function loadDetails(){
       detailCast.textContent = castNames || "—";
     }
     
-    // Image en paysage pour la section "À propos"
+    // Bande annonce pour la section "À propos"
     const detailAboutVideo = document.querySelector(".detail-about-video");
     if(detailAboutVideo){
       const placeholder = detailAboutVideo.querySelector(".detail-about-video-placeholder");
-      if(placeholder && backdropPath){
-        placeholder.innerHTML = `
-          <img src="https://image.tmdb.org/t/p/w780${backdropPath}" alt="${title}">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 2; color: rgba(255, 255, 255, 0.9);">
-            <path d="M8 5v14l11-7z"/>
-          </svg>
-        `;
+      
+      // Chercher une bande annonce dans les vidéos (plusieurs types acceptés)
+      let trailerKey = null;
+      
+      // Combiner les vidéos des deux sources (avec et sans langue)
+      const allVideos = [];
+      if(videos && videos.results && videos.results.length > 0){
+        allVideos.push(...videos.results);
+      }
+      if(videosAll && videosAll.results && videosAll.results.length > 0){
+        // Ajouter les vidéos qui ne sont pas déjà présentes
+        const existingKeys = new Set(allVideos.map(v => v.key));
+        allVideos.push(...videosAll.results.filter(v => !existingKeys.has(v.key)));
+      }
+      
+      if(allVideos.length > 0){
+        console.log("Vidéos trouvées:", allVideos.length, "vidéos");
+        
+        // Types de vidéos acceptés, par ordre de priorité
+        const videoTypes = ["Trailer", "Teaser", "Clip", "Featurette", "Behind the Scenes"];
+        
+        // Chercher dans l'ordre de priorité
+        for(const videoType of videoTypes){
+          // D'abord chercher en français
+          let video = allVideos.find(v => 
+            v.type === videoType && v.iso_639_1 === "fr" && v.site === "YouTube"
+          );
+          
+          // Sinon en anglais
+          if(!video){
+            video = allVideos.find(v => 
+              v.type === videoType && (v.iso_639_1 === "en" || !v.iso_639_1) && v.site === "YouTube"
+            );
+          }
+          
+          // Sinon n'importe quelle langue mais YouTube
+          if(!video){
+            video = allVideos.find(v => 
+              v.type === videoType && v.site === "YouTube"
+            );
+          }
+          
+          if(video && video.key){
+            trailerKey = video.key;
+            console.log(`Bande annonce trouvée (${videoType}):`, trailerKey);
+            break;
+          }
+        }
+        
+        if(!trailerKey){
+          console.log("Aucune bande annonce YouTube trouvée");
+        }
+      } else {
+        console.log("Aucune vidéo disponible");
+      }
+      
+      if(placeholder){
+        if(trailerKey && backdropPath){
+          // Afficher la vidéo YouTube avec thumbnail cliquable
+          placeholder.innerHTML = `
+            <div class="video-thumbnail" style="width: 100%; height: 100%; position: relative; cursor: pointer; z-index: 1;">
+              <img src="https://image.tmdb.org/t/p/w780${backdropPath}" alt="${title}" style="width: 100%; height: 100%; object-fit: cover; display: block;">
+              <div class="video-overlay" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.4); display: flex; align-items: center; justify-content: center; z-index: 2;">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="currentColor" style="color: rgba(255, 255, 255, 0.95); filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5));">
+                  <path d="M8 5v14l11-7z"/>
+                </svg>
+              </div>
+            </div>
+            <iframe class="youtube-trailer" 
+              style="display: none; width: 100%; height: 100%; position: absolute; top: 0; left: 0; border: none; z-index: 10;" 
+              src="" 
+              frameborder="0" 
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+              allowfullscreen>
+            </iframe>
+          `;
+          
+          // Gérer le clic pour afficher la vidéo
+          setTimeout(() => {
+            const thumbnail = placeholder.querySelector('.video-thumbnail');
+            const iframe = placeholder.querySelector('.youtube-trailer');
+            
+            if(thumbnail && iframe){
+              thumbnail.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log("Clic sur la vidéo, chargement de:", trailerKey);
+                thumbnail.style.display = 'none';
+                iframe.style.display = 'block';
+                iframe.src = `https://www.youtube.com/embed/${trailerKey}?autoplay=1&rel=0&modestbranding=1`;
+              });
+            } else {
+              console.error("Éléments vidéo non trouvés:", {thumbnail, iframe});
+            }
+          }, 100);
+        } else if(backdropPath){
+          // Fallback: afficher juste l'image si pas de bande annonce
+          placeholder.innerHTML = `
+            <img src="https://image.tmdb.org/t/p/w780${backdropPath}" alt="${title}" style="width: 100%; height: 100%; object-fit: cover;">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 2; color: rgba(255, 255, 255, 0.9); pointer-events: none;">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
+          `;
+        }
       }
     }
     

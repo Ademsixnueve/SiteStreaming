@@ -32,13 +32,11 @@
       <div class="spacer"></div>
       
       <form class="search-bar" onsubmit="return false;">
-        <input id="searchInput" type="text" placeholder="Rechercher..." aria-label="Rechercher un film ou une série">
-        <button type="submit" class="search-btn" aria-label="Rechercher">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="11" cy="11" r="8"></circle>
-            <path d="m21 21-4.35-4.35"></path>
-          </svg>
-        </button>
+        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"></circle>
+          <path d="m21 21-4.35-4.35"></path>
+        </svg>
+        <input id="searchInput" type="text" placeholder="Recherchez des films, séries, animés .." aria-label="Rechercher un film ou une série">
       </form>
     </nav>
   </header>
@@ -47,12 +45,6 @@
        PAGE DE DÉTAILS
        ======================================== -->
   <div class="detail-page">
-    <button class="detail-close" onclick="window.location.href='index.html'" aria-label="Fermer">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="18" y1="6" x2="6" y2="18"></line>
-        <line x1="6" y1="6" x2="18" y2="18"></line>
-      </svg>
-    </button>
     
     <div class="detail-background">
       <img id="detailBackgroundImage" src="" alt="" style="display: none;">
@@ -149,6 +141,41 @@
        SCRIPTS
        ======================================== -->
   <script src="detail.js"></script>
+  <script>
+    // Gérer la recherche dans la page de détails
+    document.addEventListener('DOMContentLoaded', () => {
+      const searchForm = document.querySelector('.search-bar');
+      const searchInput = document.getElementById('searchInput');
+      const searchBtn = document.querySelector('.search-btn');
+      
+      function redirectToSearch(query){
+        if(query && query.trim().length >= 2){
+          window.location.href = `search.html?q=${encodeURIComponent(query.trim())}`;
+        }
+      }
+      
+      if(searchForm && searchInput){
+        searchForm.addEventListener('submit', (e) => {
+          e.preventDefault();
+          redirectToSearch(searchInput.value);
+        });
+        
+        if(searchBtn){
+          searchBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            redirectToSearch(searchInput.value);
+          });
+        }
+        
+        searchInput.addEventListener('keydown', (e) => {
+          if(e.key === 'Enter'){
+            e.preventDefault();
+            redirectToSearch(searchInput.value);
+          }
+        });
+      }
+    });
+  </script>
 </body>
 </html>
 
