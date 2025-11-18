@@ -285,13 +285,40 @@ async function loadDetails(){
     const detailAboutSummary = document.getElementById("detailAboutSummary");
     if(detailAboutSummary) detailAboutSummary.textContent = overview;
     
-    // Créateur (pour les séries)
+    // Réalisateur
     const detailCreator = document.getElementById("detailCreator");
     if(detailCreator){
-      if(!isMovie && details.created_by && details.created_by.length > 0){
-        detailCreator.textContent = details.created_by.map(c => c.name).join(", ");
+      // Trouver le h3 dans la même section que detailCreator
+      const creatorSection = detailCreator.closest('.detail-about-section');
+      const creatorTitle = creatorSection ? creatorSection.querySelector('h3') : null;
+      
+      // Toujours afficher "Réalisateur" (pour films et séries)
+      if(creatorTitle){
+        creatorTitle.textContent = "Réalisateur";
+      }
+      
+      // Pour les films et séries : afficher tous les réalisateurs depuis credits.crew
+      if(credits && credits.crew){
+        const directors = credits.crew
+          .filter(person => person.job === "Director")
+          .map(person => person.name);
+        if(directors.length > 0){
+          detailCreator.textContent = directors.join(", ");
+        } else {
+          // Si pas de réalisateurs, pour les séries afficher les créateurs en fallback
+          if(!isMovie && details.created_by && details.created_by.length > 0){
+            detailCreator.textContent = details.created_by.map(c => c.name).join(", ");
+          } else {
+            detailCreator.textContent = "—";
+          }
+        }
       } else {
-        detailCreator.textContent = "—";
+        // Si pas de credits.crew, pour les séries afficher les créateurs en fallback
+        if(!isMovie && details.created_by && details.created_by.length > 0){
+          detailCreator.textContent = details.created_by.map(c => c.name).join(", ");
+        } else {
+          detailCreator.textContent = "—";
+        }
       }
     }
     
@@ -429,8 +456,313 @@ async function loadDetails(){
     // Mettre à jour le titre de la page
     document.title = `${title} - STREAMFLIX`;
     
+    // Charger les films de saga ou similaires
+    await loadSimilarOrCollection(itemId, type, details);
+    
   } catch(e){
     console.error("Erreur lors du chargement des détails:", e);
+  }
+}
+
+/* ========================================
+   CHARGEMENT DES FILMS DE SAGA OU SIMILAIRES
+   ======================================== */
+function createSimilarTile({imgUrl, posterUrl, title, year, isMovie, itemId}){
+  const tile = document.createElement("div");
+  tile.className = "tile";
+  tile.setAttribute("data-id", itemId);
+  tile.setAttribute("data-type", isMovie ? "movie" : "tv");
+  tile.style.cursor = "pointer";
+  
+  // Créer l'élément img avec gestionnaire d'erreur
+  const img = document.createElement("img");
+  img.src = imgUrl;
+  img.alt = title;
+  img.loading = "lazy";
+  img.decoding = "async";
+  img.style.width = "100%";
+  img.style.height = "100%";
+  img.style.objectFit = "cover";
+  
+  // Gestionnaire d'erreur pour essayer d'autres sources
+  img.onerror = function(){
+    // Si l'image principale (backdrop) ne charge pas, essayer le poster
+    if(posterUrl && this.src !== posterUrl){
+      this.src = posterUrl;
+    } else {
+      // Si le poster ne fonctionne pas non plus, utiliser une image placeholder
+      this.onerror = null; // Empêcher les boucles infinies
+      this.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='225'%3E%3Crect fill='%23151b2e' width='400' height='225'/%3E%3Ctext fill='%23666' font-family='Arial' font-size='18' x='50%25' y='50%25' text-anchor='middle' dy='.3em'%3EAffiche indisponible%3C/text%3E%3C/svg%3E";
+      this.style.opacity = "0.5";
+    }
+  };
+  
+  tile.innerHTML = `
+    <span class="badge-type">${isMovie ? "Film" : "Série"}</span>
+    <div class="info">
+      <div class="title">${title}</div>
+      <div class="meta">
+        <span>${year || '—'}</span>
+      </div>
+    </div>
+  `;
+  
+  // Insérer l'image avant le div.info
+  const infoDiv = tile.querySelector('.info');
+  tile.insertBefore(img, infoDiv);
+  
+  // Ajouter l'event listener pour ouvrir la page de détails
+  tile.addEventListener("click", () => {
+    window.location.href = `detail.html?id=${itemId}&type=${isMovie ? "movie" : "tv"}`;
+  });
+  
+  return tile;
+}
+
+async function loadSimilarOrCollection(itemId, type, details){
+  try {
+    const similarRow = document.getElementById("similarMoviesRow");
+    const similarTitle = document.getElementById("similarSectionTitle");
+    
+    if(!similarRow || !similarTitle) return;
+    
+    similarRow.innerHTML = "";
+    
+    const isMovie = type === "movie";
+    let items = [];
+    let sectionTitle = "Films de la saga";
+    
+    // Pour les films uniquement, vérifier si le film fait partie d'une collection/saga
+    if(isMovie && details.belongs_to_collection && details.belongs_to_collection.id){
+      try {
+        const collectionData = await tmdb(`/collection/${details.belongs_to_collection.id}?language=fr-FR`);
+        
+        if(collectionData && collectionData.parts && collectionData.parts.length > 1){
+          // Exclure le film actuel de la liste
+          items = collectionData.parts
+            .filter(part => part.id !== parseInt(itemId))
+            .map(part => ({
+              ...part,
+              isMovie: true,
+              title: part.title,
+              release_date: part.release_date
+            }));
+          
+          sectionTitle = collectionData.name || "Films de la saga";
+        }
+      } catch(e){
+        console.error("Erreur lors du chargement de la collection:", e);
+      }
+    }
+    
+    // Afficher la section seulement s'il y a des résultats de saga
+    if(items.length > 0){
+      similarTitle.textContent = sectionTitle;
+      
+      // Trier par date de sortie (du plus récent au plus ancien)
+      items.sort((a, b) => {
+        const dateA = new Date(a.release_date || a.first_air_date || 0);
+        const dateB = new Date(b.release_date || b.first_air_date || 0);
+        return dateB - dateA;
+      });
+      
+      for(const item of items){
+        if(!item.poster_path && !item.backdrop_path) continue;
+        
+        const title = item.title || item.name || "";
+        const year = yearOf(item.release_date || item.first_air_date);
+        // Prioriser backdrop_path pour les affiches en paysage
+        const imagePath = item.backdrop_path || item.poster_path;
+        const imgUrl = `https://image.tmdb.org/t/p/w1920${imagePath}`;
+        
+        // Créer une URL de fallback avec le poster
+        const posterPath = item.poster_path || item.backdrop_path;
+        const posterUrl = posterPath ? `https://image.tmdb.org/t/p/w500${posterPath}` : null;
+        
+        similarRow.appendChild(createSimilarTile({
+          imgUrl,
+          posterUrl,
+          title,
+          year,
+          isMovie: item.isMovie !== undefined ? item.isMovie : isMovie,
+          itemId: item.id
+        }));
+      }
+      
+      // Ajouter les boutons de scroll si nécessaire
+      const similarSection = similarRow.closest('.detail-similar-section');
+      if(similarSection && !similarSection.querySelector('.scroll-btn')){
+        const leftBtn = document.createElement('button');
+        leftBtn.className = 'scroll-btn left';
+        leftBtn.setAttribute('aria-label', 'Précédent');
+        leftBtn.setAttribute('data-target', 'similarMoviesRow');
+        leftBtn.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        `;
+        
+        const rightBtn = document.createElement('button');
+        rightBtn.className = 'scroll-btn right';
+        rightBtn.setAttribute('aria-label', 'Suivant');
+        rightBtn.setAttribute('data-target', 'similarMoviesRow');
+        rightBtn.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        `;
+        
+        similarSection.insertBefore(leftBtn, similarRow);
+        similarSection.appendChild(rightBtn);
+        
+        // Initialiser les boutons de scroll
+        setTimeout(() => {
+          updateSimilarScrollButtons(similarRow);
+        }, 100);
+      }
+    } else {
+      // Cacher la section si pas de résultats
+      similarRow.closest('.detail-similar-section').style.display = 'none';
+    }
+    
+  } catch(e){
+    console.error("Erreur lors du chargement des films de saga ou similaires:", e);
+  }
+}
+
+function updateSimilarScrollButtons(row){
+  if(!row) return;
+  
+  const containerId = row.id;
+  const leftBtn = document.querySelector(`.scroll-btn.left[data-target="${containerId}"]`);
+  const rightBtn = document.querySelector(`.scroll-btn.right[data-target="${containerId}"]`);
+  
+  if(!leftBtn || !rightBtn) return;
+  
+  const isAtStart = row.scrollLeft <= 5;
+  const isAtEnd = row.scrollWidth - row.clientWidth <= row.scrollLeft + 5;
+  
+  leftBtn.classList.toggle('hidden', isAtStart);
+  rightBtn.classList.toggle('hidden', isAtEnd);
+  
+  // Ajouter les event listeners pour le scroll
+  row.addEventListener('scroll', () => {
+    updateSimilarScrollButtons(row);
+  });
+  
+  // Ajouter les event listeners pour les boutons
+  leftBtn.addEventListener('click', () => {
+    row.scrollBy({ left: -row.clientWidth * 0.9, behavior: 'smooth' });
+  });
+  
+  rightBtn.addEventListener('click', () => {
+    row.scrollBy({ left: row.clientWidth * 0.9, behavior: 'smooth' });
+  });
+}
+
+/* ========================================
+   RECHERCHE - Suggestions en temps réel
+   ======================================== */
+let searchSuggestionsTimeout = null;
+
+function yearOf(date){
+  return date ? new Date(date).getFullYear() : "—";
+}
+
+async function searchSuggestions(query){
+  if(!query || query.trim().length < 2){
+    hideSuggestions();
+    return;
+  }
+  
+  try {
+    const searchData = await tmdb(`/search/multi?language=fr-FR&query=${encodeURIComponent(query.trim())}`);
+    
+    if(!searchData.results || searchData.results.length === 0){
+      hideSuggestions();
+      return;
+    }
+    
+    // Filtrer les résultats (films et séries uniquement)
+    let validResults = searchData.results
+      .filter(item => 
+        (item.media_type === "movie" || item.media_type === "tv") && 
+        (item.poster_path || item.backdrop_path)
+      );
+    
+    if(validResults.length === 0){
+      hideSuggestions();
+      return;
+    }
+    
+    // Trier par popularité/notoriété pour mettre les plus connus en premier
+    validResults.sort((a, b) => {
+      // Score de popularité (principal facteur)
+      const aPopularity = a.popularity || 0;
+      const bPopularity = b.popularity || 0;
+      
+      // Score de vote (films/séries avec beaucoup de votes et bonne note)
+      const aVote = (a.vote_average || 0) * (a.vote_count || 0);
+      const bVote = (b.vote_average || 0) * (b.vote_count || 0);
+      
+      // Calculer un score combiné (popularité * 2 + vote score / 100)
+      const aScore = aPopularity * 2 + (aVote / 100);
+      const bScore = bPopularity * 2 + (bVote / 100);
+      
+      return bScore - aScore;
+    });
+    
+    // Limiter à 5 résultats après le tri
+    validResults = validResults.slice(0, 5);
+    
+    displaySuggestions(validResults);
+  } catch(e){
+    console.error("Erreur lors de la recherche de suggestions:", e);
+    hideSuggestions();
+  }
+}
+
+function displaySuggestions(results){
+  const suggestionsContainer = document.getElementById("searchSuggestions");
+  if(!suggestionsContainer) return;
+  
+  suggestionsContainer.innerHTML = "";
+  
+  results.forEach(item => {
+    const isMovie = item.media_type === "movie";
+    const title = isMovie ? (item.title || item.original_title) : (item.name || item.original_name);
+    const imagePath = item.poster_path || item.backdrop_path;
+    const imgUrl = imagePath ? `https://image.tmdb.org/t/p/w92${imagePath}` : '';
+    const year = yearOf(item.release_date || item.first_air_date);
+    
+    const suggestionItem = document.createElement("div");
+    suggestionItem.className = "search-suggestion-item";
+    suggestionItem.innerHTML = `
+      ${imgUrl ? `<img src="${imgUrl}" alt="${title}" loading="lazy">` : '<div class="suggestion-placeholder"></div>'}
+      <div class="suggestion-info">
+        <div class="suggestion-title">${title}</div>
+        <div class="suggestion-meta">
+          <span class="suggestion-type">${isMovie ? "Film" : "Série"}</span>
+          ${year !== "—" ? `<span>•</span><span>${year}</span>` : ''}
+        </div>
+      </div>
+    `;
+    
+    suggestionItem.addEventListener("click", () => {
+      window.location.href = `detail.html?id=${item.id}&type=${isMovie ? "movie" : "tv"}`;
+    });
+    
+    suggestionsContainer.appendChild(suggestionItem);
+  });
+  
+  suggestionsContainer.style.display = "block";
+}
+
+function hideSuggestions(){
+  const suggestionsContainer = document.getElementById("searchSuggestions");
+  if(suggestionsContainer){
+    suggestionsContainer.style.display = "none";
+    suggestionsContainer.innerHTML = "";
   }
 }
 

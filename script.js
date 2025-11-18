@@ -61,6 +61,9 @@ async function ensureGenreMaps(){
 /* ========================================
    HERO SECTION - Gestion du carousel
    ======================================== */
+let heroItems = [];
+let currentHeroIndex = 0;
+
 async function fetchItemData(title){
   await ensureGenreMaps();
   const data = await tmdb(`/search/multi?language=fr-FR&query=${encodeURIComponent(title)}`);
@@ -111,7 +114,9 @@ async function fetchItemData(title){
     desc: pick.overview || "Aucune description disponible.",
     rating: pick.vote_average ? `⭐ ${pick.vote_average.toFixed(1)}/10` : "⭐ N/A",
     runtime,
-    year
+    year,
+    itemId: pick.id,
+    isMovie
   };
 }
 
@@ -141,6 +146,9 @@ async function initHero(){
       return;
     }
 
+    // Stocker les items globalement pour le bouton CTA
+    heroItems = items;
+
     const hero = document.querySelector(".hero");
     if (!hero) throw new Error("Conteneur .hero introuvable");
     
@@ -152,8 +160,10 @@ async function initHero(){
     }
 
     let currentIndex = 0;
+    currentHeroIndex = 0;
     let progressInterval = null;
     let slideStartTime = Date.now();
+    let autoSlideInterval = null;
 
     function updateHeroProgress(){
       if(progressSegments.length === 0) return;
@@ -181,20 +191,30 @@ async function initHero(){
     }
 
     async function showSlide(idx){
-      // Réinitialiser la barre de progression
+      // S'assurer que l'index est valide
+      if(idx < 0 || idx >= items.length) return;
+      
+      // Arrêter tous les timers pour repartir de zéro
       if(progressInterval){
         clearInterval(progressInterval);
+        progressInterval = null;
+      }
+      if(autoSlideInterval){
+        clearInterval(autoSlideInterval);
+        autoSlideInterval = null;
       }
       
       currentIndex = idx;
+      currentHeroIndex = idx;
       
-      // Réinitialiser le segment actuel
-      progressSegments.forEach((segment, index) => {
-        if(index === currentIndex){
-          segment.style.setProperty('--progress', '0%');
-        }
+      // Réinitialiser tous les segments à 0%
+      progressSegments.forEach((segment) => {
+        segment.classList.remove('active');
+        segment.classList.remove('filled');
+        segment.style.setProperty('--progress', '0%');
       });
       
+      // Réinitialiser le temps de départ pour la nouvelle barre de progression
       slideStartTime = Date.now();
       
       // Sauvegarder la position de scroll actuelle
@@ -236,16 +256,37 @@ async function initHero(){
       
       // Mettre à jour la barre de progression toutes les 16ms (60fps) pour une transition ultra fluide
       progressInterval = setInterval(updateHeroProgress, 16);
+      
+      // Redémarrer le timer de changement automatique avec un nouveau cycle
+      autoSlideInterval = setInterval(() => {
+        currentIndex = (currentIndex + 1) % items.length;
+        showSlide(currentIndex);
+      }, SLIDE_DELAY);
     }
 
-    // Afficher le premier slide
+    // Rendre les segments cliquables pour naviguer vers un slide spécifique
+    if(progressBar && progressSegments.length > 0){
+      progressSegments.forEach((segment, segmentIndex) => {
+        // Rendre le segment cliquable
+        segment.style.cursor = 'pointer';
+        
+        segment.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          
+          // Calculer l'index du slide à afficher
+          // Si on a plus de segments que d'items, on limite à items.length
+          // Sinon on utilise directement l'index du segment
+          const targetIndex = Math.min(segmentIndex, items.length - 1);
+          
+          // Changer vers le slide sélectionné
+          showSlide(targetIndex);
+        });
+      });
+    }
+
+    // Afficher le premier slide (le timer automatique sera lancé par showSlide)
     await showSlide(currentIndex);
-    
-    // Changer de slide automatiquement
-    setInterval(() => {
-      currentIndex = (currentIndex + 1) % items.length;
-      showSlide(currentIndex);
-    }, SLIDE_DELAY);
     
   } catch (e) {
     console.error("Erreur lors de l'initialisation du hero:", e);
@@ -255,16 +296,39 @@ async function initHero(){
 /* ========================================
    TUILES DE FILMS/SÉRIES
    ======================================== */
-function createTile({imgUrl, title, year, isMovie, runtimeText, typeLabel, adult = false, itemId}){
+function createTile({imgUrl, title, year, isMovie, runtimeText, typeLabel, adult = false, itemId, posterUrl = null}){
   const tile = document.createElement("div");
   tile.className = "tile";
   tile.setAttribute("data-id", itemId);
   tile.setAttribute("data-type", isMovie ? "movie" : "tv");
   tile.style.cursor = "pointer";
+  
+  // Créer l'élément img avec gestionnaire d'erreur
+  const img = document.createElement("img");
+  img.src = imgUrl;
+  img.alt = title;
+  img.loading = "lazy";
+  img.decoding = "async";
+  img.style.width = "100%";
+  img.style.height = "100%";
+  img.style.objectFit = "cover";
+  
+  // Gestionnaire d'erreur pour essayer d'autres sources
+  img.onerror = function(){
+    // Si l'image principale (backdrop) ne charge pas, essayer le poster
+    if(posterUrl && this.src !== posterUrl){
+      this.src = posterUrl;
+    } else {
+      // Si le poster ne fonctionne pas non plus, utiliser une image placeholder
+      this.onerror = null; // Empêcher les boucles infinies
+      this.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='225'%3E%3Crect fill='%23151b2e' width='400' height='225'/%3E%3Ctext fill='%23666' font-family='Arial' font-size='18' x='50%25' y='50%25' text-anchor='middle' dy='.3em'%3EAffiche indisponible%3C/text%3E%3C/svg%3E";
+      this.style.opacity = "0.5";
+    }
+  };
+  
   tile.innerHTML = `
     <span class="badge-type">${typeLabel}</span>
     ${adult ? '<span class="badge-adult">18+</span>' : ''}
-    <img src="${imgUrl}" alt="${title}" loading="lazy" decoding="async">
     <div class="info">
       <div class="title">${title}</div>
       <div class="meta">
@@ -274,6 +338,10 @@ function createTile({imgUrl, title, year, isMovie, runtimeText, typeLabel, adult
       </div>
     </div>
   `;
+  
+  // Insérer l'image avant le div.info
+  const infoDiv = tile.querySelector('.info');
+  tile.insertBefore(img, infoDiv);
   
   // Ajouter l'event listener pour ouvrir la page de détails
   tile.addEventListener("click", () => {
@@ -286,19 +354,37 @@ function createTile({imgUrl, title, year, isMovie, runtimeText, typeLabel, adult
 /* ========================================
    TUILES TOP 10 (Style Netflix)
    ======================================== */
-function createTop10Tile({imgUrl, title, year, isMovie, runtimeText, typeLabel, adult = false, itemId, rank}){
+function createTop10Tile({imgUrl, title, year, isMovie, runtimeText, typeLabel, adult = false, itemId, rank, posterUrl = null}){
   const tile = document.createElement("div");
   tile.className = "tile top10-tile";
   tile.setAttribute("data-id", itemId);
   tile.setAttribute("data-type", isMovie ? "movie" : "tv");
   tile.style.cursor = "pointer";
+  
+  // Créer l'élément img avec gestionnaire d'erreur
+  const img = document.createElement("img");
+  img.src = imgUrl;
+  img.alt = title;
+  img.loading = "lazy";
+  img.decoding = "async";
+  img.style.width = "100%";
+  img.style.height = "100%";
+  img.style.objectFit = "cover";
+  
+  // Gestionnaire d'erreur pour essayer d'autres sources
+  img.onerror = function(){
+    // Si l'image principale (poster) ne charge pas, utiliser une image placeholder
+    this.onerror = null; // Empêcher les boucles infinies
+    this.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='450'%3E%3Crect fill='%23151b2e' width='300' height='450'/%3E%3Ctext fill='%23666' font-family='Arial' font-size='16' x='50%25' y='50%25' text-anchor='middle' dy='.3em'%3EAffiche indisponible%3C/text%3E%3C/svg%3E";
+    this.style.opacity = "0.5";
+  };
+  
   tile.innerHTML = `
     <span class="top10-rank" data-rank="${rank}">
       <span class="top10-rank-shadow">${rank}</span>
       <span class="top10-rank-text">${rank}</span>
     </span>
     ${adult ? '<span class="badge-adult">18+</span>' : ''}
-    <img src="${imgUrl}" alt="${title}" loading="lazy" decoding="async">
     <div class="info">
       <div class="title">${title}</div>
       <div class="meta">
@@ -308,6 +394,10 @@ function createTop10Tile({imgUrl, title, year, isMovie, runtimeText, typeLabel, 
       </div>
     </div>
   `;
+  
+  // Insérer l'image avant le div.info
+  const infoDiv = tile.querySelector('.info');
+  tile.insertBefore(img, infoDiv);
   
   // Ajouter l'event listener pour ouvrir la page de détails
   tile.addEventListener("click", () => {
@@ -320,16 +410,18 @@ function createTop10Tile({imgUrl, title, year, isMovie, runtimeText, typeLabel, 
 /* ========================================
    CHARGEMENT DES FILMS/SÉRIES POPULAIRES
    ======================================== */
-async function loadPopular(type, containerId){
+async function loadPopular(type, containerId, excludedIds = new Set()){
   try {
     const container = $(containerId);
     
     if(!container){
       console.warn(`Container #${containerId} introuvable`);
-      return;
+      return new Set();
     }
     
     container.innerHTML = "";
+    
+    const usedIds = new Set();
 
     // Charger les populaires et les dernières sorties (films/séries américains et européens)
     const isMovie = type === "movie";
@@ -369,7 +461,7 @@ async function loadPopular(type, containerId){
     
     for(const data of allData){
       for(const item of data.results || []){
-        if(!seenIds.has(item.id) && (item.poster_path || item.backdrop_path)){
+        if(!seenIds.has(item.id) && !excludedIds.has(item.id) && (item.poster_path || item.backdrop_path)){
           seenIds.add(item.id);
           allItems.push(item);
         }
@@ -478,14 +570,18 @@ async function loadPopular(type, containerId){
     const items = filteredItems;
 
     for(const item of items){
-      // Prioriser le poster pour de meilleures affiches
-      const imagePath = item.poster_path || item.backdrop_path;
+      // Prioriser backdrop_path pour les affiches en paysage (format 16:9)
+      const imagePath = item.backdrop_path || item.poster_path;
       if(!imagePath) continue;
 
       const title = item.title || item.name || "";
       const year = yearOf(item.release_date || item.first_air_date);
-      // Utiliser w1280 pour une meilleure qualité
-      const imgUrl = `https://image.tmdb.org/t/p/w1280${imagePath}`;
+      // Utiliser w1920 pour une meilleure qualité en paysage
+      const imgUrl = `https://image.tmdb.org/t/p/w1920${imagePath}`;
+      
+      // Créer une URL de fallback avec le poster
+      const posterPath = item.poster_path || item.backdrop_path;
+      const posterUrl = posterPath ? `https://image.tmdb.org/t/p/w500${posterPath}` : null;
 
       // Utiliser les détails déjà récupérés
       const details = item.details || {};
@@ -502,6 +598,7 @@ async function loadPopular(type, containerId){
 
       container.appendChild(createTile({
         imgUrl,
+        posterUrl,
         title,
         year,
         isMovie,
@@ -510,25 +607,32 @@ async function loadPopular(type, containerId){
         adult: !!item.adult,
         itemId: item.id
       }));
+      
+      usedIds.add(item.id);
     }
+    
+    return usedIds;
   } catch(e){
     console.error(`Erreur lors du chargement des ${type} populaires:`, e);
+    return new Set();
   }
 }
 
 /* ========================================
    CHARGEMENT DU TOP 10 FRANCE (Films les plus regardés)
    ======================================== */
-async function loadTop10France(){
+async function loadTop10France(excludedIds = new Set()){
   try {
     const container = document.getElementById("top10FranceRow");
     
     if(!container){
       console.warn("Container #top10FranceRow introuvable");
-      return;
+      return new Set();
     }
     
     container.innerHTML = "";
+    
+    const usedIds = new Set();
     
     // Charger les films les plus regardés (comme Netflix)
     // Utiliser plusieurs sources pour avoir les VRAIS films populaires
@@ -551,7 +655,7 @@ async function loadTop10France(){
     
     for(const data of [trendingWeek, trendingDay, popularData1, popularData2, popularData3, popularData4, nowPlaying1, nowPlaying2, topRated1, topRated2]){
       for(const item of data.results || []){
-        if(!seenIds.has(item.id) && item.poster_path){
+        if(!seenIds.has(item.id) && !excludedIds.has(item.id) && item.poster_path){
           seenIds.add(item.id);
           allMovies.push(item);
         }
@@ -628,6 +732,8 @@ async function loadTop10France(){
         itemId: item.id,
         rank: i + 1
       }));
+      
+      usedIds.add(item.id);
     }
     
     // Mettre à jour les boutons de scroll et positionner les flèches
@@ -636,24 +742,156 @@ async function loadTop10France(){
       positionTop10ScrollButtons();
     }, 100);
     
+    return usedIds;
   } catch(e){
     console.error("Erreur lors du chargement du Top 10 France:", e);
+    return new Set();
+  }
+}
+
+async function loadTop10Series(excludedIds = new Set()){
+  try {
+    const container = document.getElementById("top10SeriesRow");
+    
+    if(!container){
+      console.warn("Container #top10SeriesRow introuvable");
+      return new Set();
+    }
+    
+    container.innerHTML = "";
+    
+    const usedIds = new Set();
+    
+    // Charger les séries les plus regardées (comme Netflix)
+    // Utiliser plusieurs sources pour avoir les VRAIES séries populaires
+    const [trendingWeek, trendingDay, popularData1, popularData2, popularData3, popularData4, onTheAir1, onTheAir2, topRated1, topRated2] = await Promise.all([
+      tmdb(`/trending/tv/week?language=fr-FR`).catch(e => ({ results: [] })),
+      tmdb(`/trending/tv/day?language=fr-FR`).catch(e => ({ results: [] })),
+      tmdb(`/tv/popular?language=fr-FR&page=1`).catch(e => ({ results: [] })),
+      tmdb(`/tv/popular?language=fr-FR&page=2`).catch(e => ({ results: [] })),
+      tmdb(`/tv/popular?language=fr-FR&page=3`).catch(e => ({ results: [] })),
+      tmdb(`/tv/popular?language=fr-FR&page=4`).catch(e => ({ results: [] })),
+      tmdb(`/tv/on_the_air?language=fr-FR&page=1`).catch(e => ({ results: [] })),
+      tmdb(`/tv/on_the_air?language=fr-FR&page=2`).catch(e => ({ results: [] })),
+      tmdb(`/tv/top_rated?language=fr-FR&page=1`).catch(e => ({ results: [] })),
+      tmdb(`/tv/top_rated?language=fr-FR&page=2`).catch(e => ({ results: [] }))
+    ]);
+    
+    // Combiner tous les résultats
+    const allSeries = [];
+    const seenIds = new Set();
+    
+    for(const data of [trendingWeek, trendingDay, popularData1, popularData2, popularData3, popularData4, onTheAir1, onTheAir2, topRated1, topRated2]){
+      for(const item of data.results || []){
+        if(!seenIds.has(item.id) && !excludedIds.has(item.id) && item.poster_path){
+          seenIds.add(item.id);
+          allSeries.push(item);
+        }
+      }
+    }
+    
+    // Filtrer pour garder uniquement les séries vraiment populaires
+    // Minimum 1000 votes ET popularité > 50 OU vote_average > 7.0
+    // ET année >= 1999
+    const popularSeries = allSeries.filter(item => {
+      const voteCount = item.vote_count || 0;
+      const popularity = item.popularity || 0;
+      const voteAvg = item.vote_average || 0;
+      
+      // Vérifier l'année (minimum 1999)
+      const releaseDate = item.first_air_date || "";
+      const year = releaseDate ? new Date(releaseDate).getFullYear() : 0;
+      if(year < 1999) return false;
+      
+      // Séries vraiment populaires : beaucoup de votes ET (bonne popularité OU bonne note)
+      return voteCount >= 1000 && (popularity > 50 || voteAvg > 7.0);
+    });
+    
+    // Trier par score combiné pour avoir les VRAIES séries les plus regardées
+    popularSeries.sort((a, b) => {
+      // Score = (popularité * 3) + (vote_average * vote_count / 100) + (vote_count / 50)
+      // Cela privilégie les séries avec beaucoup de votes ET une bonne note
+      const scoreA = (a.popularity || 0) * 3 + 
+                     ((a.vote_average || 0) * (a.vote_count || 0) / 100) + 
+                     ((a.vote_count || 0) / 50);
+      const scoreB = (b.popularity || 0) * 3 + 
+                     ((b.vote_average || 0) * (b.vote_count || 0) / 100) + 
+                     ((b.vote_count || 0) / 50);
+      return scoreB - scoreA;
+    });
+    
+    // Prendre les 10 premières séries les plus regardées
+    const top10Series = popularSeries.slice(0, 10);
+    
+    console.log(`Top 10 Séries les plus regardées: ${top10Series.length} séries trouvées`);
+    
+    for(let i = 0; i < top10Series.length; i++){
+      const item = top10Series[i];
+      
+      // Utiliser poster_path pour les affiches en portrait
+      const posterPath = item.poster_path;
+      if(!posterPath) continue;
+      
+      const title = item.name || "";
+      const year = yearOf(item.first_air_date);
+      // Utiliser w500 pour les posters en portrait
+      const imgUrl = `https://image.tmdb.org/t/p/w500${posterPath}`;
+      
+      let runtimeText = "⏱ —";
+      
+      try{
+        const details = await tmdb(`/tv/${item.id}?language=fr-FR`);
+        
+        if(details.number_of_seasons && details.number_of_episodes){
+          runtimeText = `⏱ ${details.number_of_seasons} saisons • ${details.number_of_episodes} épisodes`;
+        }
+      } catch(e){
+        // Ignore les erreurs
+      }
+      
+      container.appendChild(createTop10Tile({
+        imgUrl,
+        title,
+        year,
+        isMovie: false,
+        runtimeText,
+        typeLabel: "Série",
+        adult: !!item.adult,
+        itemId: item.id,
+        rank: i + 1
+      }));
+      
+      usedIds.add(item.id);
+    }
+    
+    // Mettre à jour les boutons de scroll et positionner les flèches
+    setTimeout(() => {
+      updateScrollButtons(container, "top10SeriesRow");
+      positionTop10ScrollButtons();
+    }, 100);
+    
+    return usedIds;
+  } catch(e){
+    console.error("Erreur lors du chargement du Top 10 Séries:", e);
+    return new Set();
   }
 }
 
 /* ========================================
    CHARGEMENT DES FILMS ET SÉRIES D'HORREUR
    ======================================== */
-async function loadHorror(containerId){
+async function loadHorror(containerId, excludedIds = new Set()){
   try {
     const container = $(containerId);
     
     if(!container){
       console.warn(`Container #${containerId} introuvable`);
-      return;
+      return new Set();
     }
     
     container.innerHTML = "";
+    
+    const usedIds = new Set();
 
     // Pays autorisés (US et Europe uniquement)
     const allowedCountries = ["US", "GB", "FR", "DE", "IT", "ES", "NL", "BE", "CH", "AT", "SE", "NO", "DK", "FI", "PL", "CZ", "IE", "PT", "GR", "LU", "IS", "EE", "LV", "LT", "SK", "SI", "HR", "HU", "RO", "BG"];
@@ -673,7 +911,7 @@ async function loadHorror(containerId){
     
     for(const data of [moviesData1, moviesData2]){
       for(const item of data.results || []){
-        if(!seenIds.has(item.id) && (item.poster_path || item.backdrop_path)){
+        if(!seenIds.has(item.id) && !excludedIds.has(item.id) && (item.poster_path || item.backdrop_path)){
           seenIds.add(item.id);
           allItems.push({...item, isMovie: true});
         }
@@ -682,7 +920,7 @@ async function loadHorror(containerId){
     
     for(const data of [seriesData1, seriesData2]){
       for(const item of data.results || []){
-        if(!seenIds.has(item.id) && (item.poster_path || item.backdrop_path)){
+        if(!seenIds.has(item.id) && !excludedIds.has(item.id) && (item.poster_path || item.backdrop_path)){
           seenIds.add(item.id);
           allItems.push({...item, isMovie: false});
         }
@@ -730,14 +968,18 @@ async function loadHorror(containerId){
     filteredItems.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
 
     for(const item of filteredItems.slice(0, 40)){
-      // Prioriser le poster pour de meilleures affiches
-      const imagePath = item.poster_path || item.backdrop_path;
+      // Prioriser backdrop_path pour les affiches en paysage (format 16:9)
+      const imagePath = item.backdrop_path || item.poster_path;
       if(!imagePath) continue;
 
       const title = item.title || item.name || "";
       const year = yearOf(item.release_date || item.first_air_date);
-      // Utiliser w1280 pour une meilleure qualité
-      const imgUrl = `https://image.tmdb.org/t/p/w1280${imagePath}`;
+      // Utiliser w1920 pour une meilleure qualité en paysage
+      const imgUrl = `https://image.tmdb.org/t/p/w1920${imagePath}`;
+      
+      // Créer une URL de fallback avec le poster
+      const posterPath = item.poster_path || item.backdrop_path;
+      const posterUrl = posterPath ? `https://image.tmdb.org/t/p/w500${posterPath}` : null;
 
       // Utiliser les détails déjà récupérés
       const details = item.details || {};
@@ -754,6 +996,7 @@ async function loadHorror(containerId){
 
       container.appendChild(createTile({
         imgUrl,
+        posterUrl,
         title,
         year,
         isMovie: item.isMovie,
@@ -762,25 +1005,32 @@ async function loadHorror(containerId){
         adult: !!item.adult,
         itemId: item.id
       }));
+      
+      usedIds.add(item.id);
     }
+    
+    return usedIds;
   } catch(e){
     console.error("Erreur lors du chargement des films et séries d'horreur:", e);
+    return new Set();
   }
 }
 
 /* ========================================
    CHARGEMENT DES FILMS ET SÉRIES ROMANTIQUES
    ======================================== */
-async function loadRomance(containerId){
+async function loadRomance(containerId, excludedIds = new Set()){
   try {
     const container = $(containerId);
     
     if(!container){
       console.warn(`Container #${containerId} introuvable`);
-      return;
+      return new Set();
     }
     
     container.innerHTML = "";
+    
+    const usedIds = new Set();
 
     // Pays autorisés (US et Europe uniquement)
     const allowedCountries = ["US", "GB", "FR", "DE", "IT", "ES", "NL", "BE", "CH", "AT", "SE", "NO", "DK", "FI", "PL", "CZ", "IE", "PT", "GR", "LU", "IS", "EE", "LV", "LT", "SK", "SI", "HR", "HU", "RO", "BG"];
@@ -800,7 +1050,7 @@ async function loadRomance(containerId){
     
     for(const data of [moviesData1, moviesData2]){
       for(const item of data.results || []){
-        if(!seenIds.has(item.id) && (item.poster_path || item.backdrop_path)){
+        if(!seenIds.has(item.id) && !excludedIds.has(item.id) && (item.poster_path || item.backdrop_path)){
           seenIds.add(item.id);
           allItems.push({...item, isMovie: true});
         }
@@ -809,7 +1059,7 @@ async function loadRomance(containerId){
     
     for(const data of [seriesData1, seriesData2]){
       for(const item of data.results || []){
-        if(!seenIds.has(item.id) && (item.poster_path || item.backdrop_path)){
+        if(!seenIds.has(item.id) && !excludedIds.has(item.id) && (item.poster_path || item.backdrop_path)){
           seenIds.add(item.id);
           allItems.push({...item, isMovie: false});
         }
@@ -857,14 +1107,18 @@ async function loadRomance(containerId){
     filteredItems.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
 
     for(const item of filteredItems.slice(0, 20)){
-      // Prioriser le poster pour de meilleures affiches
-      const imagePath = item.poster_path || item.backdrop_path;
+      // Prioriser backdrop_path pour les affiches en paysage (format 16:9)
+      const imagePath = item.backdrop_path || item.poster_path;
       if(!imagePath) continue;
 
       const title = item.title || item.name || "";
       const year = yearOf(item.release_date || item.first_air_date);
-      // Utiliser w1280 pour une meilleure qualité
-      const imgUrl = `https://image.tmdb.org/t/p/w1280${imagePath}`;
+      // Utiliser w1920 pour une meilleure qualité en paysage
+      const imgUrl = `https://image.tmdb.org/t/p/w1920${imagePath}`;
+      
+      // Créer une URL de fallback avec le poster
+      const posterPath = item.poster_path || item.backdrop_path;
+      const posterUrl = posterPath ? `https://image.tmdb.org/t/p/w500${posterPath}` : null;
 
       // Utiliser les détails déjà récupérés
       const details = item.details || {};
@@ -881,6 +1135,331 @@ async function loadRomance(containerId){
 
       container.appendChild(createTile({
         imgUrl,
+        posterUrl,
+        title,
+        year,
+        isMovie: item.isMovie,
+        runtimeText,
+        typeLabel: item.isMovie ? "Film" : "Série",
+        adult: !!item.adult,
+        itemId: item.id
+      }));
+      
+      usedIds.add(item.id);
+    }
+    
+    return usedIds;
+  } catch(e){
+    console.error("Erreur lors du chargement des films et séries romantiques:", e);
+    return new Set();
+  }
+}
+
+/* ========================================
+   CHARGEMENT DES ANIMES
+   ======================================== */
+async function loadAnime(containerId, excludedIds = new Set()){
+  try {
+    const container = $(containerId);
+    
+    if(!container){
+      console.warn(`Container #${containerId} introuvable`);
+      return new Set();
+    }
+    
+    container.innerHTML = "";
+    
+    const usedIds = new Set();
+
+    // Rechercher des animes populaires (genre animation + origine JP)
+    // Chercher aussi directement des titres populaires
+    const animeTitles = ["One Piece", "Naruto", "Dragon Ball", "Attack on Titan", "Demon Slayer", 
+                         "Death Note", "Fullmetal Alchemist", "My Hero Academia", "Jujutsu Kaisen", 
+                         "Spirited Away", "Your Name", "Studio Ghibli"];
+    
+    // Charger séries animées avec genre animation et origine JP
+    const [seriesData1, seriesData2, seriesData3, seriesData4] = await Promise.all([
+      tmdb(`/discover/tv?with_genres=16&with_origin_country=JP&language=fr-FR&sort_by=popularity.desc&page=1`).catch(e => ({ results: [] })),
+      tmdb(`/discover/tv?with_genres=16&with_origin_country=JP&language=fr-FR&sort_by=popularity.desc&page=2`).catch(e => ({ results: [] })),
+      tmdb(`/discover/tv?with_genres=16&with_origin_country=JP&language=fr-FR&sort_by=popularity.desc&page=3`).catch(e => ({ results: [] })),
+      tmdb(`/discover/tv?with_genres=16&with_origin_country=JP&language=fr-FR&sort_by=popularity.desc&page=4`).catch(e => ({ results: [] }))
+    ]);
+
+    // Chercher des titres spécifiques
+    const searchPromises = animeTitles.slice(0, 6).map(title => 
+      tmdb(`/search/tv?query=${encodeURIComponent(title)}&language=fr-FR`).catch(e => ({ results: [] }))
+    );
+    const searchResults = await Promise.all(searchPromises);
+
+    const allItems = [];
+    const seenIds = new Set();
+    
+    // Ajouter les résultats de discover
+    for(const data of [seriesData1, seriesData2, seriesData3, seriesData4]){
+      for(const item of data.results || []){
+        if(!seenIds.has(item.id) && !excludedIds.has(item.id) && (item.poster_path || item.backdrop_path)){
+          seenIds.add(item.id);
+          allItems.push({...item, isMovie: false});
+        }
+      }
+    }
+    
+    // Ajouter les résultats de recherche
+    for(const data of searchResults){
+      for(const item of data.results || []){
+        if(!seenIds.has(item.id) && !excludedIds.has(item.id) && (item.poster_path || item.backdrop_path)){
+          seenIds.add(item.id);
+          allItems.push({...item, isMovie: false});
+        }
+      }
+    }
+
+    // Trier par popularité
+    allItems.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+
+    for(const item of allItems.slice(0, 40)){
+      const imagePath = item.backdrop_path || item.poster_path;
+      if(!imagePath) continue;
+
+      const title = item.name || "";
+      const year = yearOf(item.first_air_date);
+      const imgUrl = `https://image.tmdb.org/t/p/w1920${imagePath}`;
+      
+      // Créer une URL de fallback avec le poster
+      const posterPath = item.poster_path || item.backdrop_path;
+      const posterUrl = posterPath ? `https://image.tmdb.org/t/p/w500${posterPath}` : null;
+      
+      let runtimeText = "⏱ —";
+      
+      try{
+        const details = await tmdb(`/tv/${item.id}?language=fr-FR`);
+        
+        if(details.episode_run_time && details.episode_run_time.length > 0){
+          runtimeText = `⏱ ${details.episode_run_time[0]}min`;
+        }
+      } catch(e){
+        // Ignore les erreurs
+      }
+
+      container.appendChild(createTile({
+        imgUrl,
+        posterUrl,
+        title,
+        year,
+        isMovie: false,
+        runtimeText,
+        typeLabel: "Anime",
+        adult: !!item.adult,
+        itemId: item.id
+      }));
+      
+      usedIds.add(item.id);
+    }
+    
+    return usedIds;
+  } catch(e){
+    console.error("Erreur lors du chargement des animes:", e);
+    return new Set();
+  }
+}
+
+/* ========================================
+   CHARGEMENT DES FILMS D'ACTION & THRILLER
+   ======================================== */
+async function loadAction(containerId, excludedIds = new Set()){
+  try {
+    const container = $(containerId);
+    
+    if(!container){
+      console.warn(`Container #${containerId} introuvable`);
+      return new Set();
+    }
+    
+    container.innerHTML = "";
+    
+    const usedIds = new Set();
+
+    // Charger films et séries (genre Action 28 et Thriller 53) - Plus de pages pour avoir plus de choix
+    const [moviesData1, moviesData2, moviesData3, moviesData4, seriesData1, seriesData2, seriesData3] = await Promise.all([
+      tmdb(`/discover/movie?with_genres=28,53&language=fr-FR&sort_by=popularity.desc&page=1`).catch(e => ({ results: [] })),
+      tmdb(`/discover/movie?with_genres=28,53&language=fr-FR&sort_by=popularity.desc&page=2`).catch(e => ({ results: [] })),
+      tmdb(`/discover/movie?with_genres=28,53&language=fr-FR&sort_by=popularity.desc&page=3`).catch(e => ({ results: [] })),
+      tmdb(`/discover/movie?with_genres=28,53&language=fr-FR&sort_by=popularity.desc&page=4`).catch(e => ({ results: [] })),
+      tmdb(`/discover/tv?with_genres=10759,80&language=fr-FR&sort_by=popularity.desc&page=1`).catch(e => ({ results: [] })),
+      tmdb(`/discover/tv?with_genres=10759,80&language=fr-FR&sort_by=popularity.desc&page=2`).catch(e => ({ results: [] })),
+      tmdb(`/discover/tv?with_genres=10759,80&language=fr-FR&sort_by=popularity.desc&page=3`).catch(e => ({ results: [] }))
+    ]);
+
+    const allItems = [];
+    const seenIds = new Set();
+    
+    for(const data of [moviesData1, moviesData2, moviesData3, moviesData4]){
+      for(const item of data.results || []){
+        if(!seenIds.has(item.id) && !excludedIds.has(item.id) && (item.poster_path || item.backdrop_path)){
+          seenIds.add(item.id);
+          allItems.push({...item, isMovie: true});
+        }
+      }
+    }
+    
+    for(const data of [seriesData1, seriesData2, seriesData3]){
+      for(const item of data.results || []){
+        if(!seenIds.has(item.id) && !excludedIds.has(item.id) && (item.poster_path || item.backdrop_path)){
+          seenIds.add(item.id);
+          allItems.push({...item, isMovie: false});
+        }
+      }
+    }
+
+    // Filtrer par année (2000-2025) et popularité minimale
+    const filteredItems = allItems.filter(item => {
+      const date = new Date(item.release_date || item.first_air_date || 0);
+      const year = date.getFullYear();
+      const isRecent = year >= 2000 && year <= 2025;
+      const isPopular = (item.popularity || 0) >= 20 || (item.vote_count || 0) >= 100;
+      return isRecent && isPopular;
+    });
+
+    // Trier par popularité
+    filteredItems.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+
+    for(const item of filteredItems.slice(0, 40)){
+      const imagePath = item.backdrop_path || item.poster_path;
+      if(!imagePath) continue;
+
+      const title = item.title || item.name || "";
+      const year = yearOf(item.release_date || item.first_air_date);
+      const imgUrl = `https://image.tmdb.org/t/p/w1920${imagePath}`;
+      
+      // Créer une URL de fallback avec le poster
+      const posterPath = item.poster_path || item.backdrop_path;
+      const posterUrl = posterPath ? `https://image.tmdb.org/t/p/w500${posterPath}` : null;
+      
+      let runtimeText = "⏱ —";
+      
+      try{
+        const details = await tmdb(`/${item.isMovie ? "movie" : "tv"}/${item.id}?language=fr-FR`);
+        
+        if(item.isMovie && details.runtime){
+          runtimeText = `⏱ ${Math.floor(details.runtime/60)}h ${details.runtime%60}min`;
+        } else if(!item.isMovie && details.episode_run_time && details.episode_run_time.length > 0){
+          runtimeText = `⏱ ${details.episode_run_time[0]}min`;
+        }
+      } catch(e){
+        // Ignore les erreurs
+      }
+
+      container.appendChild(createTile({
+        imgUrl,
+        posterUrl,
+        title,
+        year,
+        isMovie: item.isMovie,
+        runtimeText,
+        typeLabel: item.isMovie ? "Film" : "Série",
+        adult: !!item.adult,
+        itemId: item.id
+      }));
+      
+      usedIds.add(item.id);
+    }
+    
+    return usedIds;
+  } catch(e){
+    console.error("Erreur lors du chargement des films d'action et thriller:", e);
+    return new Set();
+  }
+}
+
+/* ========================================
+   CHARGEMENT DES COMÉDIES
+   ======================================== */
+async function loadComedy(containerId, excludedIds = new Set()){
+  try {
+    const container = $(containerId);
+    
+    if(!container){
+      console.warn(`Container #${containerId} introuvable`);
+      return new Set();
+    }
+    
+    container.innerHTML = "";
+    
+    const usedIds = new Set();
+
+    // Charger films et séries (genre Comédie 35) - Plus de pages pour avoir plus de choix
+    const [moviesData1, moviesData2, moviesData3, moviesData4, seriesData1, seriesData2, seriesData3] = await Promise.all([
+      tmdb(`/discover/movie?with_genres=35&language=fr-FR&sort_by=popularity.desc&page=1`).catch(e => ({ results: [] })),
+      tmdb(`/discover/movie?with_genres=35&language=fr-FR&sort_by=popularity.desc&page=2`).catch(e => ({ results: [] })),
+      tmdb(`/discover/movie?with_genres=35&language=fr-FR&sort_by=popularity.desc&page=3`).catch(e => ({ results: [] })),
+      tmdb(`/discover/movie?with_genres=35&language=fr-FR&sort_by=popularity.desc&page=4`).catch(e => ({ results: [] })),
+      tmdb(`/discover/tv?with_genres=35&language=fr-FR&sort_by=popularity.desc&page=1`).catch(e => ({ results: [] })),
+      tmdb(`/discover/tv?with_genres=35&language=fr-FR&sort_by=popularity.desc&page=2`).catch(e => ({ results: [] })),
+      tmdb(`/discover/tv?with_genres=35&language=fr-FR&sort_by=popularity.desc&page=3`).catch(e => ({ results: [] }))
+    ]);
+
+    const allItems = [];
+    const seenIds = new Set();
+    
+    for(const data of [moviesData1, moviesData2, moviesData3, moviesData4]){
+      for(const item of data.results || []){
+        if(!seenIds.has(item.id) && !excludedIds.has(item.id) && (item.poster_path || item.backdrop_path)){
+          seenIds.add(item.id);
+          allItems.push({...item, isMovie: true});
+        }
+      }
+    }
+    
+    for(const data of [seriesData1, seriesData2, seriesData3]){
+      for(const item of data.results || []){
+        if(!seenIds.has(item.id) && !excludedIds.has(item.id) && (item.poster_path || item.backdrop_path)){
+          seenIds.add(item.id);
+          allItems.push({...item, isMovie: false});
+        }
+      }
+    }
+
+    // Filtrer par année (2000-2025) et popularité minimale
+    const filteredItems = allItems.filter(item => {
+      const date = new Date(item.release_date || item.first_air_date || 0);
+      const year = date.getFullYear();
+      const isRecent = year >= 2000 && year <= 2025;
+      const isPopular = (item.popularity || 0) >= 20 || (item.vote_count || 0) >= 100;
+      return isRecent && isPopular;
+    });
+
+    // Trier par popularité
+    filteredItems.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+
+    for(const item of filteredItems.slice(0, 40)){
+      const imagePath = item.backdrop_path || item.poster_path;
+      if(!imagePath) continue;
+
+      const title = item.title || item.name || "";
+      const year = yearOf(item.release_date || item.first_air_date);
+      const imgUrl = `https://image.tmdb.org/t/p/w1920${imagePath}`;
+      
+      // Créer une URL de fallback avec le poster
+      const posterPath = item.poster_path || item.backdrop_path;
+      const posterUrl = posterPath ? `https://image.tmdb.org/t/p/w500${posterPath}` : null;
+      
+      let runtimeText = "⏱ —";
+      
+      try{
+        const details = await tmdb(`/${item.isMovie ? "movie" : "tv"}/${item.id}?language=fr-FR`);
+        
+        if(item.isMovie && details.runtime){
+          runtimeText = `⏱ ${Math.floor(details.runtime/60)}h ${details.runtime%60}min`;
+        } else if(!item.isMovie && details.episode_run_time && details.episode_run_time.length > 0){
+          runtimeText = `⏱ ${details.episode_run_time[0]}min`;
+        }
+      } catch(e){
+        // Ignore les erreurs
+      }
+
+      container.appendChild(createTile({
+        imgUrl,
+        posterUrl,
         title,
         year,
         isMovie: item.isMovie,
@@ -891,7 +1470,338 @@ async function loadRomance(containerId){
       }));
     }
   } catch(e){
-    console.error("Erreur lors du chargement des films et séries romantiques:", e);
+    console.error("Erreur lors du chargement des comédies:", e);
+  }
+}
+
+/* ========================================
+   CHARGEMENT DES FILMS DE SCIENCE-FICTION
+   ======================================== */
+async function loadSciFi(containerId, excludedIds = new Set()){
+  try {
+    const container = $(containerId);
+    
+    if(!container){
+      console.warn(`Container #${containerId} introuvable`);
+      return new Set();
+    }
+    
+    container.innerHTML = "";
+    
+    const usedIds = new Set();
+
+    // Charger films et séries (genre Science-Fiction 878) - Plus de pages pour avoir plus de choix
+    const [moviesData1, moviesData2, moviesData3, moviesData4, seriesData1, seriesData2, seriesData3] = await Promise.all([
+      tmdb(`/discover/movie?with_genres=878&language=fr-FR&sort_by=popularity.desc&page=1`).catch(e => ({ results: [] })),
+      tmdb(`/discover/movie?with_genres=878&language=fr-FR&sort_by=popularity.desc&page=2`).catch(e => ({ results: [] })),
+      tmdb(`/discover/movie?with_genres=878&language=fr-FR&sort_by=popularity.desc&page=3`).catch(e => ({ results: [] })),
+      tmdb(`/discover/movie?with_genres=878&language=fr-FR&sort_by=popularity.desc&page=4`).catch(e => ({ results: [] })),
+      tmdb(`/discover/tv?with_genres=10765&language=fr-FR&sort_by=popularity.desc&page=1`).catch(e => ({ results: [] })),
+      tmdb(`/discover/tv?with_genres=10765&language=fr-FR&sort_by=popularity.desc&page=2`).catch(e => ({ results: [] })),
+      tmdb(`/discover/tv?with_genres=10765&language=fr-FR&sort_by=popularity.desc&page=3`).catch(e => ({ results: [] }))
+    ]);
+
+    const allItems = [];
+    const seenIds = new Set();
+    
+    for(const data of [moviesData1, moviesData2, moviesData3, moviesData4]){
+      for(const item of data.results || []){
+        if(!seenIds.has(item.id) && !excludedIds.has(item.id) && (item.poster_path || item.backdrop_path)){
+          seenIds.add(item.id);
+          allItems.push({...item, isMovie: true});
+        }
+      }
+    }
+    
+    for(const data of [seriesData1, seriesData2, seriesData3]){
+      for(const item of data.results || []){
+        if(!seenIds.has(item.id) && !excludedIds.has(item.id) && (item.poster_path || item.backdrop_path)){
+          seenIds.add(item.id);
+          allItems.push({...item, isMovie: false});
+        }
+      }
+    }
+
+    // Filtrer par année (2000-2025) et popularité minimale
+    const filteredItems = allItems.filter(item => {
+      const date = new Date(item.release_date || item.first_air_date || 0);
+      const year = date.getFullYear();
+      const isRecent = year >= 2000 && year <= 2025;
+      const isPopular = (item.popularity || 0) >= 20 || (item.vote_count || 0) >= 100;
+      return isRecent && isPopular;
+    });
+
+    // Trier par popularité
+    filteredItems.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+
+    for(const item of filteredItems.slice(0, 40)){
+      const imagePath = item.backdrop_path || item.poster_path;
+      if(!imagePath) continue;
+
+      const title = item.title || item.name || "";
+      const year = yearOf(item.release_date || item.first_air_date);
+      const imgUrl = `https://image.tmdb.org/t/p/w1920${imagePath}`;
+      
+      // Créer une URL de fallback avec le poster
+      const posterPath = item.poster_path || item.backdrop_path;
+      const posterUrl = posterPath ? `https://image.tmdb.org/t/p/w500${posterPath}` : null;
+      
+      let runtimeText = "⏱ —";
+      
+      try{
+        const details = await tmdb(`/${item.isMovie ? "movie" : "tv"}/${item.id}?language=fr-FR`);
+        
+        if(item.isMovie && details.runtime){
+          runtimeText = `⏱ ${Math.floor(details.runtime/60)}h ${details.runtime%60}min`;
+        } else if(!item.isMovie && details.episode_run_time && details.episode_run_time.length > 0){
+          runtimeText = `⏱ ${details.episode_run_time[0]}min`;
+        }
+      } catch(e){
+        // Ignore les erreurs
+      }
+
+      container.appendChild(createTile({
+        imgUrl,
+        posterUrl,
+        title,
+        year,
+        isMovie: item.isMovie,
+        runtimeText,
+        typeLabel: item.isMovie ? "Film" : "Série",
+        adult: !!item.adult,
+        itemId: item.id
+      }));
+      
+      usedIds.add(item.id);
+    }
+    
+    return usedIds;
+  } catch(e){
+    console.error("Erreur lors du chargement des films de science-fiction:", e);
+    return new Set();
+  }
+}
+
+/* ========================================
+   CHARGEMENT DES DOCUMENTAIRES
+   ======================================== */
+async function loadDocumentary(containerId, excludedIds = new Set()){
+  try {
+    const container = $(containerId);
+    
+    if(!container){
+      console.warn(`Container #${containerId} introuvable`);
+      return new Set();
+    }
+    
+    container.innerHTML = "";
+    
+    const usedIds = new Set();
+
+    // Charger films et séries (genre Documentaire 99)
+    const [moviesData1, moviesData2, seriesData1, seriesData2] = await Promise.all([
+      tmdb(`/discover/movie?with_genres=99&language=fr-FR&sort_by=popularity.desc&page=1`).catch(e => ({ results: [] })),
+      tmdb(`/discover/movie?with_genres=99&language=fr-FR&sort_by=popularity.desc&page=2`).catch(e => ({ results: [] })),
+      tmdb(`/discover/tv?with_genres=99&language=fr-FR&sort_by=popularity.desc&page=1`).catch(e => ({ results: [] })),
+      tmdb(`/discover/tv?with_genres=99&language=fr-FR&sort_by=popularity.desc&page=2`).catch(e => ({ results: [] }))
+    ]);
+
+    const allItems = [];
+    const seenIds = new Set();
+    
+    for(const data of [moviesData1, moviesData2]){
+      for(const item of data.results || []){
+        if(!seenIds.has(item.id) && !excludedIds.has(item.id) && (item.poster_path || item.backdrop_path)){
+          seenIds.add(item.id);
+          allItems.push({...item, isMovie: true});
+        }
+      }
+    }
+    
+    for(const data of [seriesData1, seriesData2]){
+      for(const item of data.results || []){
+        if(!seenIds.has(item.id) && !excludedIds.has(item.id) && (item.poster_path || item.backdrop_path)){
+          seenIds.add(item.id);
+          allItems.push({...item, isMovie: false});
+        }
+      }
+    }
+
+    // Filtrer par année (2000-2025)
+    const filteredItems = allItems.filter(item => {
+      const date = new Date(item.release_date || item.first_air_date || 0);
+      const year = date.getFullYear();
+      return year >= 2000 && year <= 2025;
+    });
+
+    // Trier par popularité
+    filteredItems.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+
+    for(const item of filteredItems.slice(0, 40)){
+      const imagePath = item.backdrop_path || item.poster_path;
+      if(!imagePath) continue;
+
+      const title = item.title || item.name || "";
+      const year = yearOf(item.release_date || item.first_air_date);
+      const imgUrl = `https://image.tmdb.org/t/p/w1920${imagePath}`;
+      
+      let runtimeText = "⏱ —";
+      
+      try{
+        const details = await tmdb(`/${item.isMovie ? "movie" : "tv"}/${item.id}?language=fr-FR`);
+        
+        if(item.isMovie && details.runtime){
+          runtimeText = `⏱ ${Math.floor(details.runtime/60)}h ${details.runtime%60}min`;
+        } else if(!item.isMovie && details.episode_run_time && details.episode_run_time.length > 0){
+          runtimeText = `⏱ ${details.episode_run_time[0]}min`;
+        }
+      } catch(e){
+        // Ignore les erreurs
+      }
+
+      // Créer une URL de fallback avec le poster
+      const posterPath = item.poster_path || item.backdrop_path;
+      const posterUrl = posterPath ? `https://image.tmdb.org/t/p/w500${posterPath}` : null;
+      
+      container.appendChild(createTile({
+        imgUrl,
+        posterUrl,
+        title,
+        year,
+        isMovie: item.isMovie,
+        runtimeText,
+        typeLabel: item.isMovie ? "Documentaire" : "Documentaire",
+        adult: !!item.adult,
+        itemId: item.id
+      }));
+      
+      usedIds.add(item.id);
+    }
+    
+    return usedIds;
+  } catch(e){
+    console.error("Erreur lors du chargement des documentaires:", e);
+    return new Set();
+  }
+}
+
+/* ========================================
+   CHARGEMENT DES FILMS D'ANIMATION
+   ======================================== */
+async function loadAnimation(containerId, excludedIds = new Set()){
+  try {
+    const container = $(containerId);
+    
+    if(!container){
+      console.warn(`Container #${containerId} introuvable`);
+      return new Set();
+    }
+    
+    container.innerHTML = "";
+    
+    const usedIds = new Set();
+
+    // Charger films et séries (genre Animation 16) - Exclure les animes japonais (qui sont déjà dans la catégorie Anime)
+    const [moviesData1, moviesData2, moviesData3, moviesData4, seriesData1, seriesData2, seriesData3] = await Promise.all([
+      tmdb(`/discover/movie?with_genres=16&language=fr-FR&sort_by=popularity.desc&page=1`).catch(e => ({ results: [] })),
+      tmdb(`/discover/movie?with_genres=16&language=fr-FR&sort_by=popularity.desc&page=2`).catch(e => ({ results: [] })),
+      tmdb(`/discover/movie?with_genres=16&language=fr-FR&sort_by=popularity.desc&page=3`).catch(e => ({ results: [] })),
+      tmdb(`/discover/movie?with_genres=16&language=fr-FR&sort_by=popularity.desc&page=4`).catch(e => ({ results: [] })),
+      tmdb(`/discover/tv?with_genres=16&language=fr-FR&sort_by=popularity.desc&page=1`).catch(e => ({ results: [] })),
+      tmdb(`/discover/tv?with_genres=16&language=fr-FR&sort_by=popularity.desc&page=2`).catch(e => ({ results: [] })),
+      tmdb(`/discover/tv?with_genres=16&language=fr-FR&sort_by=popularity.desc&page=3`).catch(e => ({ results: [] }))
+    ]);
+
+    const allItems = [];
+    const seenIds = new Set();
+    
+    for(const data of [moviesData1, moviesData2, moviesData3, moviesData4]){
+      for(const item of data.results || []){
+        if(!seenIds.has(item.id) && !excludedIds.has(item.id) && (item.poster_path || item.backdrop_path)){
+          // Exclure les films d'animation japonais (pour éviter doublon avec Anime)
+          const productionCountries = item.production_countries || [];
+          const originCountry = item.origin_country || [];
+          const countries = [...originCountry, ...productionCountries.map(c => c.iso_3166_1 || c)];
+          if(!countries.includes('JP')){
+            seenIds.add(item.id);
+            allItems.push({...item, isMovie: true});
+          }
+        }
+      }
+    }
+    
+    for(const data of [seriesData1, seriesData2, seriesData3]){
+      for(const item of data.results || []){
+        if(!seenIds.has(item.id) && !excludedIds.has(item.id) && (item.poster_path || item.backdrop_path)){
+          // Exclure les séries d'animation japonaises (pour éviter doublon avec Anime)
+          const originCountry = item.origin_country || [];
+          const productionCountries = item.production_countries || [];
+          const countries = [...originCountry, ...productionCountries.map(c => c.iso_3166_1 || c)];
+          if(!countries.includes('JP')){
+            seenIds.add(item.id);
+            allItems.push({...item, isMovie: false});
+          }
+        }
+      }
+    }
+
+    // Filtrer par année (2000-2025) et popularité minimale
+    const filteredItems = allItems.filter(item => {
+      const date = new Date(item.release_date || item.first_air_date || 0);
+      const year = date.getFullYear();
+      const isRecent = year >= 2000 && year <= 2025;
+      const isPopular = (item.popularity || 0) >= 15 || (item.vote_count || 0) >= 100;
+      return isRecent && isPopular;
+    });
+
+    // Trier par popularité
+    filteredItems.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+
+    for(const item of filteredItems.slice(0, 40)){
+      const imagePath = item.backdrop_path || item.poster_path;
+      if(!imagePath) continue;
+
+      const title = item.title || item.name || "";
+      const year = yearOf(item.release_date || item.first_air_date);
+      const imgUrl = `https://image.tmdb.org/t/p/w1920${imagePath}`;
+      
+      // Créer une URL de fallback avec le poster
+      const posterPath = item.poster_path || item.backdrop_path;
+      const posterUrl = posterPath ? `https://image.tmdb.org/t/p/w500${posterPath}` : null;
+      
+      let runtimeText = "⏱ —";
+      
+      try{
+        const details = await tmdb(`/${item.isMovie ? "movie" : "tv"}/${item.id}?language=fr-FR`);
+        
+        if(item.isMovie && details.runtime){
+          runtimeText = `⏱ ${Math.floor(details.runtime/60)}h ${details.runtime%60}min`;
+        } else if(!item.isMovie && details.episode_run_time && details.episode_run_time.length > 0){
+          runtimeText = `⏱ ${details.episode_run_time[0]}min`;
+        }
+      } catch(e){
+        // Ignore les erreurs
+      }
+
+      container.appendChild(createTile({
+        imgUrl,
+        posterUrl,
+        title,
+        year,
+        isMovie: item.isMovie,
+        runtimeText,
+        typeLabel: item.isMovie ? "Film" : "Série",
+        adult: !!item.adult,
+        itemId: item.id
+      }));
+      
+      usedIds.add(item.id);
+    }
+    
+    return usedIds;
+  } catch(e){
+    console.error("Erreur lors du chargement des films d'animation:", e);
+    return new Set();
   }
 }
 
@@ -899,33 +1809,64 @@ async function loadRomance(containerId){
    POSITIONNEMENT DES FLÈCHES TOP 10
    ======================================== */
 function positionTop10ScrollButtons(){
-  const top10Row = document.getElementById("top10FranceRow");
-  const top10Section = document.querySelector(".top10-section");
+  // Gérer les flèches pour Top 10 Films
+  const top10MoviesRow = document.getElementById("top10FranceRow");
+  const top10MoviesSection = top10MoviesRow ? top10MoviesRow.closest(".top10-section") : null;
   
-  if(!top10Row || !top10Section) return;
-  
-  const rowRect = top10Row.getBoundingClientRect();
-  const sectionRect = top10Section.getBoundingClientRect();
-  
-  // Calculer le centre vertical de la row par rapport à la section
-  const rowTop = rowRect.top - sectionRect.top;
-  const rowCenter = rowTop + (rowRect.height / 2);
-  
-  // Ajuster légèrement vers le haut (monter un peu)
-  const adjustedCenter = rowCenter - 15;
-  
-  // Positionner les flèches
-  const leftBtn = document.querySelector('.top10-section .scroll-btn.left[data-target="top10FranceRow"]');
-  const rightBtn = document.querySelector('.top10-section .scroll-btn.right[data-target="top10FranceRow"]');
-  
-  if(leftBtn){
-    leftBtn.style.top = `${adjustedCenter}px`;
-    leftBtn.style.transform = 'translateY(-50%)';
+  if(top10MoviesRow && top10MoviesSection){
+    const rowRect = top10MoviesRow.getBoundingClientRect();
+    const sectionRect = top10MoviesSection.getBoundingClientRect();
+    
+    // Calculer le centre vertical de la row par rapport à la section
+    const rowTop = rowRect.top - sectionRect.top;
+    const rowCenter = rowTop + (rowRect.height / 2);
+    
+    // Ajuster légèrement vers le haut (monter un peu)
+    const adjustedCenter = rowCenter - 15;
+    
+    // Positionner les flèches
+    const leftBtn = top10MoviesSection.querySelector('.scroll-btn.left[data-target="top10FranceRow"]');
+    const rightBtn = top10MoviesSection.querySelector('.scroll-btn.right[data-target="top10FranceRow"]');
+    
+    if(leftBtn){
+      leftBtn.style.top = `${adjustedCenter}px`;
+      leftBtn.style.transform = 'translateY(-50%)';
+    }
+    
+    if(rightBtn){
+      rightBtn.style.top = `${adjustedCenter}px`;
+      rightBtn.style.transform = 'translateY(-50%)';
+    }
   }
   
-  if(rightBtn){
-    rightBtn.style.top = `${adjustedCenter}px`;
-    rightBtn.style.transform = 'translateY(-50%)';
+  // Gérer les flèches pour Top 10 Séries
+  const top10SeriesRow = document.getElementById("top10SeriesRow");
+  const top10SeriesSection = top10SeriesRow ? top10SeriesRow.closest(".top10-section") : null;
+  
+  if(top10SeriesRow && top10SeriesSection){
+    const rowRect = top10SeriesRow.getBoundingClientRect();
+    const sectionRect = top10SeriesSection.getBoundingClientRect();
+    
+    // Calculer le centre vertical de la row par rapport à la section
+    const rowTop = rowRect.top - sectionRect.top;
+    const rowCenter = rowTop + (rowRect.height / 2);
+    
+    // Ajuster légèrement vers le haut (monter un peu)
+    const adjustedCenter = rowCenter - 15;
+    
+    // Positionner les flèches
+    const leftBtn = top10SeriesSection.querySelector('.scroll-btn.left[data-target="top10SeriesRow"]');
+    const rightBtn = top10SeriesSection.querySelector('.scroll-btn.right[data-target="top10SeriesRow"]');
+    
+    if(leftBtn){
+      leftBtn.style.top = `${adjustedCenter}px`;
+      leftBtn.style.transform = 'translateY(-50%)';
+    }
+    
+    if(rightBtn){
+      rightBtn.style.top = `${adjustedCenter}px`;
+      rightBtn.style.transform = 'translateY(-50%)';
+    }
   }
 }
 
@@ -1042,6 +1983,112 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /* ========================================
+   RECHERCHE - Suggestions en temps réel
+   ======================================== */
+let searchTimeout = null;
+let currentSuggestions = [];
+
+async function searchSuggestions(query){
+  if(!query || query.trim().length < 2){
+    hideSuggestions();
+    return;
+  }
+  
+  try {
+    const searchData = await tmdb(`/search/multi?language=fr-FR&query=${encodeURIComponent(query.trim())}`);
+    
+    if(!searchData.results || searchData.results.length === 0){
+      hideSuggestions();
+      return;
+    }
+    
+    // Filtrer les résultats (films et séries uniquement)
+    let validResults = searchData.results
+      .filter(item => 
+        (item.media_type === "movie" || item.media_type === "tv") && 
+        (item.poster_path || item.backdrop_path)
+      );
+    
+    if(validResults.length === 0){
+      hideSuggestions();
+      return;
+    }
+    
+    // Trier par popularité/notoriété pour mettre les plus connus en premier
+    validResults.sort((a, b) => {
+      // Score de popularité (principal facteur)
+      const aPopularity = a.popularity || 0;
+      const bPopularity = b.popularity || 0;
+      
+      // Score de vote (films/séries avec beaucoup de votes et bonne note)
+      const aVote = (a.vote_average || 0) * (a.vote_count || 0);
+      const bVote = (b.vote_average || 0) * (b.vote_count || 0);
+      
+      // Calculer un score combiné (popularité * 2 + vote score / 100)
+      // Cela privilégie les contenus populaires avec beaucoup de votes
+      const aScore = aPopularity * 2 + (aVote / 100);
+      const bScore = bPopularity * 2 + (bVote / 100);
+      
+      return bScore - aScore;
+    });
+    
+    // Limiter à 5 résultats après le tri
+    validResults = validResults.slice(0, 5);
+    
+    displaySuggestions(validResults);
+  } catch(e){
+    console.error("Erreur lors de la recherche de suggestions:", e);
+    hideSuggestions();
+  }
+}
+
+function displaySuggestions(results){
+  const suggestionsContainer = document.getElementById("searchSuggestions");
+  if(!suggestionsContainer) return;
+  
+  currentSuggestions = results;
+  suggestionsContainer.innerHTML = "";
+  
+  results.forEach(item => {
+    const isMovie = item.media_type === "movie";
+    const title = isMovie ? (item.title || item.original_title) : (item.name || item.original_name);
+    const imagePath = item.poster_path || item.backdrop_path;
+    const imgUrl = imagePath ? `https://image.tmdb.org/t/p/w92${imagePath}` : '';
+    const year = yearOf(item.release_date || item.first_air_date);
+    
+    const suggestionItem = document.createElement("div");
+    suggestionItem.className = "search-suggestion-item";
+    suggestionItem.innerHTML = `
+      ${imgUrl ? `<img src="${imgUrl}" alt="${title}" loading="lazy">` : '<div class="suggestion-placeholder"></div>'}
+      <div class="suggestion-info">
+        <div class="suggestion-title">${title}</div>
+        <div class="suggestion-meta">
+          <span class="suggestion-type">${isMovie ? "Film" : "Série"}</span>
+          ${year !== "—" ? `<span>•</span><span>${year}</span>` : ''}
+        </div>
+      </div>
+    `;
+    
+    suggestionItem.addEventListener("click", () => {
+      window.location.href = `PageDetail/detail.html?id=${item.id}&type=${isMovie ? "movie" : "tv"}`;
+    });
+    
+    suggestionsContainer.appendChild(suggestionItem);
+  });
+  
+  suggestionsContainer.style.display = "block";
+}
+
+function hideSuggestions(){
+  const suggestionsContainer = document.getElementById("searchSuggestions");
+  if(suggestionsContainer){
+    suggestionsContainer.style.display = "none";
+    suggestionsContainer.innerHTML = "";
+    currentSuggestions = [];
+  }
+}
+
+/* ========================================
    RECHERCHE - Redirection vers page dédiée
    ======================================== */
 function redirectToSearch(query){
@@ -1049,6 +2096,7 @@ function redirectToSearch(query){
     return;
   }
   
+  hideSuggestions();
   // Rediriger vers la page de recherche avec la requête en paramètre
   window.location.href = `PageRecherche/search.html?q=${encodeURIComponent(query.trim())}`;
 }
@@ -1060,13 +2108,51 @@ function redirectToSearch(query){
   // Initialiser le hero
   await initHero();
   
-  // Charger les sections
+  // Gérer le bouton "REGARDER MAINTENANT"
+  const watchButton = document.querySelector('.hero .cta');
+  if(watchButton){
+    watchButton.addEventListener('click', () => {
+      if(heroItems.length > 0 && currentHeroIndex < heroItems.length){
+        const currentItem = heroItems[currentHeroIndex];
+        if(currentItem && currentItem.itemId){
+          window.location.href = `PageDetail/detail.html?id=${currentItem.itemId}&type=${currentItem.isMovie ? "movie" : "tv"}`;
+        }
+      }
+    });
+  }
+  
+  // Charger les sections en séquence pour éviter les doublons
+  let excludedIds = new Set();
+  
+  // Charger les sections principales d'abord
+  const usedIds1 = await loadPopular("movie", "popularMovies", excludedIds);
+  excludedIds = new Set([...excludedIds, ...usedIds1]);
+  
+  const usedIds2 = await loadTop10France(excludedIds);
+  excludedIds = new Set([...excludedIds, ...usedIds2]);
+  
+  const usedIds3 = await loadPopular("tv", "popularSeries", excludedIds);
+  excludedIds = new Set([...excludedIds, ...usedIds3]);
+  
+  const usedIds4 = await loadTop10Series(excludedIds);
+  excludedIds = new Set([...excludedIds, ...usedIds4]);
+  
+  const usedIds5 = await loadHorror("horrorMovies", excludedIds);
+  excludedIds = new Set([...excludedIds, ...usedIds5]);
+  
+  const usedIds6 = await loadRomance("romanceMovies", excludedIds);
+  excludedIds = new Set([...excludedIds, ...usedIds6]);
+  
+  const usedIds7 = await loadAnime("animeSeries", excludedIds);
+  excludedIds = new Set([...excludedIds, ...usedIds7]);
+  
+  // Charger les autres catégories en parallèle après les principales
   await Promise.all([
-    loadPopular("movie", "popularMovies"),
-    loadPopular("tv", "popularSeries"),
-    loadTop10France(),
-    loadHorror("horrorMovies"),
-    loadRomance("romanceMovies")
+    loadAction("actionMovies", excludedIds),
+    loadComedy("comedyMovies", excludedIds),
+    loadSciFi("scifiMovies", excludedIds),
+    loadDocumentary("documentaryMovies", excludedIds),
+    loadAnimation("animationMovies", excludedIds)
   ]);
   
   // Initialiser les boutons de scroll après le chargement
@@ -1079,7 +2165,7 @@ function redirectToSearch(query){
     });
   }, 500);
   
-  // Gérer la recherche - Redirection vers page dédiée
+  // Gérer la recherche - Suggestions et redirection
   const searchForm = document.querySelector('.search-bar');
   const searchInput = document.getElementById('searchInput');
   
@@ -1101,6 +2187,36 @@ function redirectToSearch(query){
         if(query.length >= 2){
           redirectToSearch(query);
         }
+      } else if(e.key === 'Escape'){
+        hideSuggestions();
+        searchInput.blur();
+      }
+    });
+    
+    // Suggestions en temps réel avec debounce
+    searchInput.addEventListener('input', (e) => {
+      const query = e.target.value.trim();
+      
+      // Annuler la recherche précédente
+      if(searchTimeout){
+        clearTimeout(searchTimeout);
+      }
+      
+      if(query.length >= 2){
+        // Attendre 300ms après la dernière frappe
+        searchTimeout = setTimeout(() => {
+          searchSuggestions(query);
+        }, 300);
+      } else {
+        hideSuggestions();
+      }
+    });
+    
+    // Cacher les suggestions quand on clique ailleurs
+    document.addEventListener('click', (e) => {
+      const searchContainer = document.querySelector('.search-container');
+      if(searchContainer && !searchContainer.contains(e.target)){
+        hideSuggestions();
       }
     });
   }

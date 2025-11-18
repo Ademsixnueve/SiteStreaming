@@ -343,6 +343,108 @@ function hideStatus(){
 }
 
 /* ========================================
+   RECHERCHE - Suggestions en temps réel
+   ======================================== */
+let searchSuggestionsTimeout = null;
+
+async function searchSuggestions(query){
+  if(!query || query.trim().length < 2){
+    hideSuggestions();
+    return;
+  }
+  
+  try {
+    const searchData = await tmdb(`/search/multi?language=fr-FR&query=${encodeURIComponent(query.trim())}`);
+    
+    if(!searchData.results || searchData.results.length === 0){
+      hideSuggestions();
+      return;
+    }
+    
+    // Filtrer les résultats (films et séries uniquement)
+    let validResults = searchData.results
+      .filter(item => 
+        (item.media_type === "movie" || item.media_type === "tv") && 
+        (item.poster_path || item.backdrop_path)
+      );
+    
+    if(validResults.length === 0){
+      hideSuggestions();
+      return;
+    }
+    
+    // Trier par popularité/notoriété pour mettre les plus connus en premier
+    validResults.sort((a, b) => {
+      // Score de popularité (principal facteur)
+      const aPopularity = a.popularity || 0;
+      const bPopularity = b.popularity || 0;
+      
+      // Score de vote (films/séries avec beaucoup de votes et bonne note)
+      const aVote = (a.vote_average || 0) * (a.vote_count || 0);
+      const bVote = (b.vote_average || 0) * (b.vote_count || 0);
+      
+      // Calculer un score combiné (popularité * 2 + vote score / 100)
+      const aScore = aPopularity * 2 + (aVote / 100);
+      const bScore = bPopularity * 2 + (bVote / 100);
+      
+      return bScore - aScore;
+    });
+    
+    // Limiter à 5 résultats après le tri
+    validResults = validResults.slice(0, 5);
+    
+    displaySuggestions(validResults);
+  } catch(e){
+    console.error("Erreur lors de la recherche de suggestions:", e);
+    hideSuggestions();
+  }
+}
+
+function displaySuggestions(results){
+  const suggestionsContainer = document.getElementById("searchSuggestions");
+  if(!suggestionsContainer) return;
+  
+  suggestionsContainer.innerHTML = "";
+  
+  results.forEach(item => {
+    const isMovie = item.media_type === "movie";
+    const title = isMovie ? (item.title || item.original_title) : (item.name || item.original_name);
+    const imagePath = item.poster_path || item.backdrop_path;
+    const imgUrl = imagePath ? `https://image.tmdb.org/t/p/w92${imagePath}` : '';
+    const year = yearOf(item.release_date || item.first_air_date);
+    
+    const suggestionItem = document.createElement("div");
+    suggestionItem.className = "search-suggestion-item";
+    suggestionItem.innerHTML = `
+      ${imgUrl ? `<img src="${imgUrl}" alt="${title}" loading="lazy">` : '<div class="suggestion-placeholder"></div>'}
+      <div class="suggestion-info">
+        <div class="suggestion-title">${title}</div>
+        <div class="suggestion-meta">
+          <span class="suggestion-type">${isMovie ? "Film" : "Série"}</span>
+          ${year !== "—" ? `<span>•</span><span>${year}</span>` : ''}
+        </div>
+      </div>
+    `;
+    
+    suggestionItem.addEventListener("click", () => {
+      window.location.href = `../PageDetail/detail.html?id=${item.id}&type=${isMovie ? "movie" : "tv"}`;
+    });
+    
+    suggestionsContainer.appendChild(suggestionItem);
+  });
+  
+  suggestionsContainer.style.display = "block";
+}
+
+function hideSuggestions(){
+  const suggestionsContainer = document.getElementById("searchSuggestions");
+  if(suggestionsContainer){
+    suggestionsContainer.style.display = "none";
+    suggestionsContainer.innerHTML = "";
+  }
+}
+
+/* ========================================
    GESTION DE LA RECHERCHE
    ======================================== */
 function handleSearch(event){
@@ -351,6 +453,7 @@ function handleSearch(event){
   if(searchInput){
     const query = searchInput.value.trim();
     if(query.length >= 2){
+      hideSuggestions();
       currentSearchItem = null;
       performSearch(query);
     }
@@ -390,11 +493,40 @@ document.addEventListener('DOMContentLoaded', () => {
       searchBtn.addEventListener('click', handleSearch);
     }
     
-    // Recherche en temps réel (avec debounce)
+    // Recherche lors de la touche Entrée
+    searchInput.addEventListener('keydown', (e) => {
+      if(e.key === 'Enter'){
+        e.preventDefault();
+        const query = searchInput.value.trim();
+        if(query.length >= 2){
+          handleSearch(e);
+        }
+      } else if(e.key === 'Escape'){
+        hideSuggestions();
+        searchInput.blur();
+      }
+    });
+    
+    // Suggestions en temps réel avec debounce
     searchInput.addEventListener('input', (e) => {
-      clearTimeout(searchTimeout);
       const query = e.target.value.trim();
       
+      // Annuler la recherche précédente
+      if(searchSuggestionsTimeout){
+        clearTimeout(searchSuggestionsTimeout);
+      }
+      
+      if(query.length >= 2){
+        // Afficher les suggestions (300ms après la dernière frappe)
+        searchSuggestionsTimeout = setTimeout(() => {
+          searchSuggestions(query);
+        }, 300);
+      } else {
+        hideSuggestions();
+      }
+      
+      // Recherche en temps réel (avec debounce plus long pour la page complète)
+      clearTimeout(searchTimeout);
       if(query.length >= 2){
         searchTimeout = setTimeout(() => {
           currentSearchItem = null;
@@ -408,6 +540,14 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById("searchSubtitle").textContent = "Tapez votre recherche ci-dessus";
         hideStatus();
         currentSearchItem = null;
+      }
+    });
+    
+    // Cacher les suggestions quand on clique ailleurs
+    document.addEventListener('click', (e) => {
+      const searchContainer = document.querySelector('.search-container');
+      if(searchContainer && !searchContainer.contains(e.target)){
+        hideSuggestions();
       }
     });
   }
