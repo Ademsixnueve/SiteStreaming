@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Recherche - STREAMFLIX</title>
+  
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Plus+Jakarta+Sans:wght@600;700&family=Manrope:wght@600;700&display=swap" rel="stylesheet">
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="search.css">
+</head>
+<body>
+
+  <!-- ========================================
+       HEADER & NAVIGATION
+       ======================================== -->
+  <header class="header">
+    <nav class="nav">
+      <div class="brand" onclick="window.location.href='../index.html'">STREAMFLIX</div>
+      
+      <div class="navlinks">
+        <a href="../index.html#accueil">Accueil</a>
+        <a href="../index.html#series">Séries</a>
+        <a href="../index.html#films">Films</a>
+      </div>
+      
+      <div class="spacer"></div>
+      
+      <form class="search-bar" onsubmit="handleSearch(event); return false;">
+        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"></circle>
+          <path d="m21 21-4.35-4.35"></path>
+        </svg>
+        <input id="searchInput" type="text" placeholder="Recherchez des films, séries, animés .." aria-label="Rechercher un film ou une série" autofocus>
+      </form>
+    </nav>
+  </header>
+
+  <!-- ========================================
+       PAGE DE RECHERCHE
+       ======================================== -->
+  <div class="search-page">
+    <div class="search-content">
+      
+      <!-- En-tête de recherche -->
+      <div class="search-header">
+        <h1 id="searchPageTitle" class="search-title">Recherche</h1>
+        <p id="searchSubtitle" class="search-subtitle">Tapez votre recherche ci-dessus</p>
+      </div>
+      
+      <!-- Résultats de recherche -->
+      <section class="search-results-section" id="searchResultsSection" style="display: none;">
+        <h2 id="searchResultsTitle" class="section-title">Résultats de recherche</h2>
+        
+        <div class="search-grid" id="searchResultsGrid"></div>
+      </section>
+      
+      <!-- Titres similaires -->
+      <section class="search-results-section" id="similarResultsSection" style="display: none;">
+        <h2 id="similarResultsTitle" class="section-title">Titres similaires</h2>
+        
+        <div class="search-grid" id="similarResultsGrid"></div>
+      </section>
+      
+      <!-- Message d'état -->
+      <div id="searchStatus" class="search-status" style="display: none;"></div>
+      
+    </div>
+  </div>
+
+  <!-- ========================================
+       SCRIPTS
+       ======================================== -->
+  <script src="search.js"></script>
+</body>
+</html>
+
