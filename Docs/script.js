@@ -6,11 +6,11 @@ const SLIDE_DELAY = 3000;
 
 // Films à afficher dans le hero (modifiez cette liste pour changer les films)
 const HERO_TITLES = [
-  "Avengers: Infinity War",
+  "Breaking Bad",
   "Fight Club",
   "F1",
-  "Terrifier 3",
-  "The Dark Knight"
+  "Snowfall",
+  "Oppenheimer"
 ];
 
 /* ========================================
