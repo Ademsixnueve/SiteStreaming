@@ -551,5 +551,32 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+  
+  // Menu hamburger pour mobile
+  const menuToggle = document.getElementById('menuToggle');
+  const navLinks = document.getElementById('navLinks');
+  
+  if(menuToggle && navLinks){
+    menuToggle.addEventListener('click', () => {
+      menuToggle.classList.toggle('active');
+      navLinks.classList.toggle('active');
+    });
+    
+    // Fermer le menu quand on clique sur un lien
+    navLinks.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', () => {
+        menuToggle.classList.remove('active');
+        navLinks.classList.remove('active');
+      });
+    });
+    
+    // Fermer le menu quand on clique en dehors
+    document.addEventListener('click', (e) => {
+      if(!menuToggle.contains(e.target) && !navLinks.contains(e.target)){
+        menuToggle.classList.remove('active');
+        navLinks.classList.remove('active');
+      }
+    });
+  }
 });
 

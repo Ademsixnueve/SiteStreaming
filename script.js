@@ -296,7 +296,7 @@ async function initHero(){
 /* ========================================
    TUILES DE FILMS/SÉRIES
    ======================================== */
-function createTile({imgUrl, title, year, isMovie, runtimeText, typeLabel, adult = false, itemId, posterUrl = null}){
+function createTile({imgUrl, title, year, isMovie, runtimeText, typeLabel, adult = false, itemId, posterUrl = null, genre = null}){
   const tile = document.createElement("div");
   tile.className = "tile";
   tile.setAttribute("data-id", itemId);
@@ -336,6 +336,7 @@ function createTile({imgUrl, title, year, isMovie, runtimeText, typeLabel, adult
         <span>•</span>
         <span>${year || '—'}</span>
       </div>
+      ${genre ? `<div class="genre">${genre}</div>` : ''}
     </div>
   `;
   
@@ -595,6 +596,9 @@ async function loadPopular(type, containerId, excludedIds = new Set()){
         const episodes = details.number_of_episodes ?? "?";
         runtimeText = `${seasons} saison${seasons > 1 ? "s" : ""} • ${episodes} ép.`;
       }
+      
+      // Extraire le premier genre
+      const genre = details.genres && details.genres.length > 0 ? details.genres[0].name : null;
 
       container.appendChild(createTile({
         imgUrl,
@@ -605,7 +609,8 @@ async function loadPopular(type, containerId, excludedIds = new Set()){
         runtimeText,
         typeLabel: isMovie ? "Film" : "Série",
         adult: !!item.adult,
-        itemId: item.id
+        itemId: item.id,
+        genre
       }));
       
       usedIds.add(item.id);
@@ -993,6 +998,9 @@ async function loadHorror(containerId, excludedIds = new Set()){
           runtimeText = `⏱ ${details.episode_run_time[0]}min`;
         }
       }
+      
+      // Extraire le premier genre
+      const genre = details.genres && details.genres.length > 0 ? details.genres[0].name : null;
 
       container.appendChild(createTile({
         imgUrl,
@@ -1003,7 +1011,8 @@ async function loadHorror(containerId, excludedIds = new Set()){
         runtimeText,
         typeLabel: item.isMovie ? "Film" : "Série",
         adult: !!item.adult,
-        itemId: item.id
+        itemId: item.id,
+        genre
       }));
       
       usedIds.add(item.id);
@@ -1132,6 +1141,9 @@ async function loadRomance(containerId, excludedIds = new Set()){
           runtimeText = `⏱ ${details.episode_run_time[0]}min`;
         }
       }
+      
+      // Extraire le premier genre
+      const genre = details.genres && details.genres.length > 0 ? details.genres[0].name : null;
 
       container.appendChild(createTile({
         imgUrl,
@@ -1142,7 +1154,8 @@ async function loadRomance(containerId, excludedIds = new Set()){
         runtimeText,
         typeLabel: item.isMovie ? "Film" : "Série",
         adult: !!item.adult,
-        itemId: item.id
+        itemId: item.id,
+        genre
       }));
       
       usedIds.add(item.id);
@@ -1230,12 +1243,18 @@ async function loadAnime(containerId, excludedIds = new Set()){
       const posterUrl = posterPath ? `https://image.tmdb.org/t/p/w500${posterPath}` : null;
       
       let runtimeText = "⏱ —";
+      let genre = null;
       
       try{
         const details = await tmdb(`/tv/${item.id}?language=fr-FR`);
         
         if(details.episode_run_time && details.episode_run_time.length > 0){
           runtimeText = `⏱ ${details.episode_run_time[0]}min`;
+        }
+        
+        // Extraire le premier genre
+        if(details.genres && details.genres.length > 0){
+          genre = details.genres[0].name;
         }
       } catch(e){
         // Ignore les erreurs
@@ -1250,7 +1269,8 @@ async function loadAnime(containerId, excludedIds = new Set()){
         runtimeText,
         typeLabel: "Anime",
         adult: !!item.adult,
-        itemId: item.id
+        itemId: item.id,
+        genre
       }));
       
       usedIds.add(item.id);
@@ -1336,6 +1356,7 @@ async function loadAction(containerId, excludedIds = new Set()){
       const posterUrl = posterPath ? `https://image.tmdb.org/t/p/w500${posterPath}` : null;
       
       let runtimeText = "⏱ —";
+      let genre = null;
       
       try{
         const details = await tmdb(`/${item.isMovie ? "movie" : "tv"}/${item.id}?language=fr-FR`);
@@ -1344,6 +1365,11 @@ async function loadAction(containerId, excludedIds = new Set()){
           runtimeText = `⏱ ${Math.floor(details.runtime/60)}h ${details.runtime%60}min`;
         } else if(!item.isMovie && details.episode_run_time && details.episode_run_time.length > 0){
           runtimeText = `⏱ ${details.episode_run_time[0]}min`;
+        }
+        
+        // Extraire le premier genre
+        if(details.genres && details.genres.length > 0){
+          genre = details.genres[0].name;
         }
       } catch(e){
         // Ignore les erreurs
@@ -1358,7 +1384,8 @@ async function loadAction(containerId, excludedIds = new Set()){
         runtimeText,
         typeLabel: item.isMovie ? "Film" : "Série",
         adult: !!item.adult,
-        itemId: item.id
+        itemId: item.id,
+        genre
       }));
       
       usedIds.add(item.id);
@@ -1444,6 +1471,7 @@ async function loadComedy(containerId, excludedIds = new Set()){
       const posterUrl = posterPath ? `https://image.tmdb.org/t/p/w500${posterPath}` : null;
       
       let runtimeText = "⏱ —";
+      let genre = null;
       
       try{
         const details = await tmdb(`/${item.isMovie ? "movie" : "tv"}/${item.id}?language=fr-FR`);
@@ -1452,6 +1480,11 @@ async function loadComedy(containerId, excludedIds = new Set()){
           runtimeText = `⏱ ${Math.floor(details.runtime/60)}h ${details.runtime%60}min`;
         } else if(!item.isMovie && details.episode_run_time && details.episode_run_time.length > 0){
           runtimeText = `⏱ ${details.episode_run_time[0]}min`;
+        }
+        
+        // Extraire le premier genre
+        if(details.genres && details.genres.length > 0){
+          genre = details.genres[0].name;
         }
       } catch(e){
         // Ignore les erreurs
@@ -1466,7 +1499,8 @@ async function loadComedy(containerId, excludedIds = new Set()){
         runtimeText,
         typeLabel: item.isMovie ? "Film" : "Série",
         adult: !!item.adult,
-        itemId: item.id
+        itemId: item.id,
+        genre
       }));
     }
   } catch(e){
@@ -1547,6 +1581,7 @@ async function loadSciFi(containerId, excludedIds = new Set()){
       const posterUrl = posterPath ? `https://image.tmdb.org/t/p/w500${posterPath}` : null;
       
       let runtimeText = "⏱ —";
+      let genre = null;
       
       try{
         const details = await tmdb(`/${item.isMovie ? "movie" : "tv"}/${item.id}?language=fr-FR`);
@@ -1555,6 +1590,11 @@ async function loadSciFi(containerId, excludedIds = new Set()){
           runtimeText = `⏱ ${Math.floor(details.runtime/60)}h ${details.runtime%60}min`;
         } else if(!item.isMovie && details.episode_run_time && details.episode_run_time.length > 0){
           runtimeText = `⏱ ${details.episode_run_time[0]}min`;
+        }
+        
+        // Extraire le premier genre
+        if(details.genres && details.genres.length > 0){
+          genre = details.genres[0].name;
         }
       } catch(e){
         // Ignore les erreurs
@@ -1569,7 +1609,8 @@ async function loadSciFi(containerId, excludedIds = new Set()){
         runtimeText,
         typeLabel: item.isMovie ? "Film" : "Série",
         adult: !!item.adult,
-        itemId: item.id
+        itemId: item.id,
+        genre
       }));
       
       usedIds.add(item.id);
@@ -1646,6 +1687,7 @@ async function loadDocumentary(containerId, excludedIds = new Set()){
       const imgUrl = `https://image.tmdb.org/t/p/w1920${imagePath}`;
       
       let runtimeText = "⏱ —";
+      let genre = null;
       
       try{
         const details = await tmdb(`/${item.isMovie ? "movie" : "tv"}/${item.id}?language=fr-FR`);
@@ -1654,6 +1696,11 @@ async function loadDocumentary(containerId, excludedIds = new Set()){
           runtimeText = `⏱ ${Math.floor(details.runtime/60)}h ${details.runtime%60}min`;
         } else if(!item.isMovie && details.episode_run_time && details.episode_run_time.length > 0){
           runtimeText = `⏱ ${details.episode_run_time[0]}min`;
+        }
+        
+        // Extraire le premier genre
+        if(details.genres && details.genres.length > 0){
+          genre = details.genres[0].name;
         }
       } catch(e){
         // Ignore les erreurs
@@ -1672,7 +1719,8 @@ async function loadDocumentary(containerId, excludedIds = new Set()){
         runtimeText,
         typeLabel: item.isMovie ? "Documentaire" : "Documentaire",
         adult: !!item.adult,
-        itemId: item.id
+        itemId: item.id,
+        genre
       }));
       
       usedIds.add(item.id);
@@ -1770,6 +1818,7 @@ async function loadAnimation(containerId, excludedIds = new Set()){
       const posterUrl = posterPath ? `https://image.tmdb.org/t/p/w500${posterPath}` : null;
       
       let runtimeText = "⏱ —";
+      let genre = null;
       
       try{
         const details = await tmdb(`/${item.isMovie ? "movie" : "tv"}/${item.id}?language=fr-FR`);
@@ -1778,6 +1827,11 @@ async function loadAnimation(containerId, excludedIds = new Set()){
           runtimeText = `⏱ ${Math.floor(details.runtime/60)}h ${details.runtime%60}min`;
         } else if(!item.isMovie && details.episode_run_time && details.episode_run_time.length > 0){
           runtimeText = `⏱ ${details.episode_run_time[0]}min`;
+        }
+        
+        // Extraire le premier genre
+        if(details.genres && details.genres.length > 0){
+          genre = details.genres[0].name;
         }
       } catch(e){
         // Ignore les erreurs
@@ -1792,7 +1846,8 @@ async function loadAnimation(containerId, excludedIds = new Set()){
         runtimeText,
         typeLabel: item.isMovie ? "Film" : "Série",
         adult: !!item.adult,
-        itemId: item.id
+        itemId: item.id,
+        genre
       }));
       
       usedIds.add(item.id);
@@ -1963,6 +2018,33 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('resize', () => {
     positionTop10ScrollButtons();
   });
+  
+  // Menu hamburger pour mobile
+  const menuToggle = document.getElementById('menuToggle');
+  const navLinks = document.getElementById('navLinks');
+  
+  if(menuToggle && navLinks){
+    menuToggle.addEventListener('click', () => {
+      menuToggle.classList.toggle('active');
+      navLinks.classList.toggle('active');
+    });
+    
+    // Fermer le menu quand on clique sur un lien
+    navLinks.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', () => {
+        menuToggle.classList.remove('active');
+        navLinks.classList.remove('active');
+      });
+    });
+    
+    // Fermer le menu quand on clique en dehors
+    document.addEventListener('click', (e) => {
+      if(!menuToggle.contains(e.target) && !navLinks.contains(e.target)){
+        menuToggle.classList.remove('active');
+        navLinks.classList.remove('active');
+      }
+    });
+  }
 });
 
 /* ========================================
