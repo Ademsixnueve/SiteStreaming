@@ -1173,6 +1173,10 @@ body{
     height: 16px;
   }
   
+  .hero-progress{
+    display: none;
+  }
+  
   .hero-content{
     padding: 24px;
   }
@@ -1315,18 +1319,7 @@ body{
   }
   
   .hero-progress{
-    bottom: 120px;
-    gap: 6px;
-    height: 5px;
-  }
-  
-  .hero-progress .progress-segment{
-    width: 30px;
-    height: 5px;
-  }
-  
-  .hero-progress .progress-segment.active{
-    width: 45px;
+    display: none;
   }
   
   /* Sections mobile */
